@@ -1,0 +1,868 @@
+import { useState, useMemo } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useBrand } from "../context/BrandContext";
+import { formatNaira, getTotalStockValue } from "../data/store";
+import {
+  useLogistics,
+  useProducts,
+  useStaff,
+  useOrders,
+  useCreateLogistics,
+  useUpdateLogistics,
+  useDeleteLogistics,
+  useUpdateProduct,
+} from "@/data/queries";
+import {
+  Plus,
+  Search,
+  X,
+  MapPin,
+  Phone,
+  Package,
+  Edit2,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  TrendingUp,
+  FileText,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+export default function Logistics() {
+  const { user } = useAuth();
+  const { brand } = useBrand();
+  const companyId = user?.companyId as string;
+
+  // React Query Data Hooks
+  const {
+    data: logistics = [],
+    isLoading: loadingLogistics,
+    error: logisticsError,
+  } = useLogistics(companyId);
+
+  const {
+    data: products = [],
+    isLoading: loadingProducts,
+    error: productsError,
+  } = useProducts(companyId);
+
+  const { data: staff = [] } = useStaff(companyId);
+  const { data: orders = [] } = useOrders(companyId);
+
+  // React Query Mutation Hooks
+  const createLogisticsMutation = useCreateLogistics();
+  const updateLogisticsMutation = useUpdateLogistics();
+  const deleteLogisticsMutation = useDeleteLogistics();
+  const updateProductMutation = useUpdateProduct();
+
+  // Local UI States
+  const [search, setSearch] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [editing, setEditing] = useState<LogisticsCompany | null>(null);
+  const [selectedLocation, setSelectedLocation] =
+    useState<LogisticsCompany | null>(null);
+  const [form, setForm] = useState<Partial<LogisticsCompany>>({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [inventoryForm, setInventoryForm] = useState<LogisticsInventoryItem[]>(
+    [],
+  );
+
+  // Permissions
+  const currentStaff = staff.find((s) => s.fullName === user?.fullName);
+  const isCEO = user?.role === "ceo";
+  const canAddLogistics = isCEO || currentStaff?.permissions.canAddLogistics;
+  // const canAddInventory =
+  //   isCEO || currentStaff?.permissions.canAddEditInventory;
+
+  const canAddInventory = true;
+
+  // Filtered Items
+  const filtered = useMemo(() => {
+    return logistics.filter(
+      (l) =>
+        l.name.toLowerCase().includes(search.toLowerCase()) ||
+        l.location!.toLowerCase().includes(search.toLowerCase()),
+    );
+  }, [logistics, search]);
+
+  const stockStats = useMemo(
+    () => getTotalStockValue(products, logistics),
+    [products, logistics],
+  );
+
+  // Agent performance metrics
+  const agentMetrics = useMemo(
+    () =>
+      logistics.map((agent) => {
+        const del = orders.filter(
+          (o) =>
+            o.orderStatus === "delivered" && o.logisticsCompanyId === agent.id,
+        );
+        return {
+          id: agent.id,
+          deliveries: del.length,
+          itemsDispatched: del.reduce(
+            (s, o) => s + o.items.reduce((s2, i) => s2 + i.quantity, 0),
+            0,
+          ),
+          revenue: del.reduce((s, o) => s + o.amountPaid, 0),
+          fees: del.reduce((s, o) => s + o.deliveryFee, 0),
+          units: agent.inventory.reduce((s, i) => s + i.quantity, 0),
+          orders: del,
+        };
+      }),
+    [logistics, orders],
+  );
+
+  const getAgentM = (id: string) => agentMetrics.find((a) => a.id === id);
+
+  const chartData = useMemo(() => {
+    return logistics.map((a) => ({
+      name: a.name.length > 10 ? a.name.slice(0, 10) + "…" : a.name,
+      deliveries: getAgentM(a.id)?.deliveries || 0,
+      stock: getAgentM(a.id)?.units || 0,
+    }));
+  }, [logistics, agentMetrics]);
+
+  // Handlers
+  const openAdd = () => {
+    if (!canAddLogistics) return alert("No permission");
+    setEditing(null);
+    setForm({ inventory: [] });
+    setShowModal(true);
+  };
+
+  const openEdit = (l: LogisticsCompany) => {
+    if (!canAddLogistics) return alert("No permission");
+    setEditing(l);
+    setForm({ ...l });
+    setShowModal(true);
+  };
+
+  const openInventoryModal = (l: LogisticsCompany) => {
+    if (!canAddInventory) return alert("No permission");
+    setSelectedLocation(l);
+    setInventoryForm(l.inventory.map((i) => ({ ...i })));
+    setShowInventoryModal(true);
+  };
+
+  const save = async () => {
+    if (!form.name || !form.phone || !form.location || !companyId) return;
+
+    if (editing) {
+      await updateLogisticsMutation.mutateAsync({
+        companyId,
+        id: editing.id,
+        data: {
+          name: form.name,
+          phone: form.phone,
+          location: form.location,
+        },
+      });
+    } else {
+      await createLogisticsMutation.mutateAsync({
+        companyId,
+        data: {
+          companyId: companyId,
+          name: form.name || "",
+          phone: form.phone || "",
+          location: form.location || "",
+          inventory: [],
+          createdAt: new Date().toISOString().split("T")[0],
+        } as Omit<LogisticsCompany, "id">,
+      });
+    }
+    setShowModal(false);
+  };
+
+  const saveInventory = async () => {
+    if (!selectedLocation || !companyId) return;
+
+    const valid = inventoryForm.filter((i) => i.quantity > 0 || i.minStock > 0);
+    const updatedLogistics = logistics.map((l) =>
+      l.id === selectedLocation.id ? { ...l, inventory: valid } : l,
+    );
+
+    // Save updated inventory for logistics company
+    await updateLogisticsMutation.mutateAsync({
+      companyId,
+      id: selectedLocation.id,
+      data: { inventory: valid },
+    });
+
+    // Sync product stock across all locations
+    await Promise.all(
+      products.map(async (p) => {
+        const totalStock = updatedLogistics.reduce(
+          (sum, l) =>
+            sum +
+            (l.inventory.find((i) => i.productId === p.id)?.quantity || 0),
+          0,
+        );
+        const status = totalStock === 0 ? "out-of-stock" : "in-stock";
+
+        if (p.totalStock !== totalStock || p.status !== status) {
+          await updateProductMutation.mutateAsync({
+            companyId,
+            id: p.id,
+            data: { totalStock, status },
+          });
+        }
+      }),
+    );
+
+    setShowInventoryModal(false);
+  };
+
+  const addProductToInventory = () => {
+    const unused = products.find(
+      (p) => !inventoryForm.some((i) => i.productId === p.id),
+    );
+    if (unused) {
+      setInventoryForm([
+        ...inventoryForm,
+        { productId: unused.id, quantity: 0, minStock: 0 },
+      ]);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!canAddLogistics || !companyId) return;
+    if (confirm("Are you sure you want to delete this agent?")) {
+      await deleteLogisticsMutation.mutateAsync({ companyId, id });
+    }
+  };
+
+  const getLocVal = (l: LogisticsCompany, t: "cost" | "retail" | "wholesale") =>
+    l.inventory.reduce((s, inv) => {
+      const p = products.find((x) => x.id === inv.productId);
+      if (!p) return s;
+      if (t === "cost") return s + (p.tiers[0]?.costPrice || 0) * inv.quantity;
+      const tier = p.tiers.find(
+        (x) => x.name === (t === "retail" ? "Retail" : "Wholesale"),
+      );
+      return s + (tier?.sellingPrice || 0) * inv.quantity;
+    }, 0);
+
+  const isLowStock = (inv: LogisticsInventoryItem) =>
+    inv.minStock > 0 && inv.quantity <= inv.minStock;
+
+  const downloadHistory = (agent: LogisticsCompany) => {
+    const am = getAgentM(agent.id);
+    const win = window.open("", "_blank");
+    if (!win || !am) return;
+
+    win.document.write(
+      `<!DOCTYPE html><html><head><title>${agent.name} History</title><style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px}h1{font-size:16px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #ddd;padding:4px 6px}th{background:#f0f0f0;font-size:10px}@media print{body{padding:5px}}</style></head><body>`,
+    );
+    win.document.write(
+      `<h1>${agent.name} - ${agent.location}</h1><p>Phone: ${agent.phone} | Deliveries: ${am.deliveries} | Revenue: ${formatNaira(am.revenue)} | Fees: ${formatNaira(am.fees)}</p>`,
+    );
+    win.document.write(
+      "<h3>Inventory</h3><table><tr><th>Product</th><th>Qty</th></tr>",
+    );
+    agent.inventory.forEach((inv) => {
+      const p = products.find((x) => x.id === inv.productId);
+      win.document.write(
+        `<tr><td>${p?.name || inv.productId}</td><td>${inv.quantity}</td></tr>`,
+      );
+    });
+    win.document.write(
+      "</table><h3>Delivery History</h3><table><tr><th>#</th><th>Customer</th><th>Products</th><th>Amount</th><th>Fee</th><th>Date</th></tr>",
+    );
+    am.orders.forEach((o) => {
+      win.document.write(
+        `<tr><td>${o.serialNumber}</td><td>${o.customerName}</td><td>${o.items.map((i) => `${i.productName}(${i.quantity})`).join(", ")}</td><td>${formatNaira(o.amountPaid)}</td><td>${formatNaira(o.deliveryFee)}</td><td>${o.actualDeliveryDate}</td></tr>`,
+      );
+    });
+    win.document.write("</table></body></html>");
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  };
+
+  if (loadingLogistics || loadingProducts) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-sm text-gray-500">Loading logistics...</p>
+      </div>
+    );
+  }
+
+  if (logisticsError || productsError) {
+    return (
+      <div className="card p-6 text-center">
+        <p className="text-sm text-red-600">
+          Could not load logistics data. Please try again.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Stock Summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          {
+            l: "Total Units",
+            v: stockStats.totalUnits.toLocaleString(),
+            c: "bg-blue-100 text-blue-600",
+          },
+          {
+            l: "Cost Value",
+            v: formatNaira(stockStats.costValue),
+            c: "bg-gray-100 text-gray-600",
+          },
+          {
+            l: "Retail Value",
+            v: formatNaira(stockStats.retailValue),
+            c: "bg-green-100 text-green-600",
+          },
+          {
+            l: "Wholesale Value",
+            v: formatNaira(stockStats.wholesaleValue),
+            c: "bg-purple-100 text-purple-600",
+          },
+        ].map((s, i) => (
+          <div key={i} className="card p-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center ${s.c}`}
+              >
+                <Package size={20} />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-gray-900">{s.v}</p>
+                <p className="text-xs text-gray-500">{s.l}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Performance Chart */}
+      {isCEO && (
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <TrendingUp size={16} /> Agent Performance
+          </h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#6B7280" }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#9CA3AF" }}
+              />
+              <Tooltip />
+              <Bar
+                dataKey="deliveries"
+                fill={brand.primaryColor}
+                name="Deliveries"
+                radius={[3, 3, 0, 0]}
+              />
+              <Bar
+                dataKey="stock"
+                fill="#10B981"
+                name="Stock"
+                radius={[3, 3, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search agents..."
+            className="input-field pl-9"
+          />
+        </div>
+        {canAddLogistics && (
+          <button
+            onClick={openAdd}
+            className="btn-primary flex items-center gap-2"
+            style={{ backgroundColor: brand.primaryColor }}
+          >
+            <Plus size={16} /> Add Agent
+          </button>
+        )}
+      </div>
+
+      {/* Agent List */}
+      <div className="space-y-3">
+        {filtered.map((loc) => {
+          const am = getAgentM(loc.id);
+          const hasLow = loc.inventory.some((inv) => isLowStock(inv));
+          const isExp = expandedId === loc.id;
+          return (
+            <div key={loc.id} className="card overflow-hidden">
+              <div
+                className="p-4 flex items-center gap-4 cursor-pointer"
+                onClick={() => setExpandedId(isExp ? null : loc.id)}
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: `${brand.primaryColor}15` }}
+                >
+                  <MapPin size={20} style={{ color: brand.primaryColor }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      {loc.name}
+                    </h4>
+                    {hasLow && (
+                      <AlertTriangle size={14} className="text-amber-500" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    <MapPin size={10} className="inline" /> {loc.location} •{" "}
+                    <Phone size={10} className="inline" /> {loc.phone}
+                  </p>
+                </div>
+                <div className="hidden sm:flex items-center gap-4 text-center">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {am?.units || 0}
+                    </p>
+                    <p className="text-[9px] text-gray-400">Stock</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-green-600">
+                      {am?.deliveries || 0}
+                    </p>
+                    <p className="text-[9px] text-gray-400">Deliveries</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-blue-600">
+                      {formatNaira(am?.revenue || 0)}
+                    </p>
+                    <p className="text-[9px] text-gray-400">Revenue</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {canAddInventory && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openInventoryModal(loc);
+                      }}
+                      className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"
+                    >
+                      <Package size={14} />
+                    </button>
+                  )}
+                  {isCEO && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        downloadHistory(loc);
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Download History"
+                    >
+                      <FileText size={14} />
+                    </button>
+                  )}
+                  {canAddLogistics && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(loc);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          remove(loc.id);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  {isExp ? (
+                    <ChevronUp size={16} className="text-gray-400" />
+                  ) : (
+                    <ChevronDown size={16} className="text-gray-400" />
+                  )}
+                </div>
+              </div>
+              {isExp && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {/* Performance stats */}
+                  {am && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                      <div className="bg-gray-50 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold">{am.deliveries}</p>
+                        <p className="text-[9px] text-gray-500">Deliveries</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold">
+                          {am.itemsDispatched}
+                        </p>
+                        <p className="text-[9px] text-gray-500">
+                          Items Dispatched
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold text-green-600">
+                          {formatNaira(am.revenue)}
+                        </p>
+                        <p className="text-[9px] text-gray-500">Revenue</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3 text-center">
+                        <p className="text-lg font-bold text-amber-600">
+                          {formatNaira(am.fees)}
+                        </p>
+                        <p className="text-[9px] text-gray-500">Fees Earned</p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Inventory */}
+                  <p className="text-xs font-semibold text-gray-500 uppercase mt-3 mb-2">
+                    <Package size={12} className="inline" /> Inventory
+                  </p>
+                  {loc.inventory.length === 0 ? (
+                    <p className="text-sm text-gray-400">No inventory</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {loc.inventory.map((inv) => {
+                        const p = products.find((x) => x.id === inv.productId);
+                        if (!p) return null;
+                        return (
+                          <div
+                            key={inv.productId}
+                            className="flex items-center justify-between py-1.5 px-3 bg-gray-50 rounded-lg text-xs"
+                          >
+                            <div className="flex items-center gap-2">
+                              {isLowStock(inv) && (
+                                <AlertTriangle
+                                  size={10}
+                                  className="text-amber-500"
+                                />
+                              )}
+                              {p.imageUrl ? (
+                                <img
+                                  src={p.imageUrl}
+                                  alt=""
+                                  className="w-6 h-6 rounded object-cover"
+                                />
+                              ) : null}
+                              <span>{p.name}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`font-semibold ${
+                                  isLowStock(inv) ? "text-amber-600" : ""
+                                }`}
+                              >
+                                {inv.quantity}
+                              </span>
+                              <span className="text-gray-400">
+                                min:{inv.minStock}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="flex gap-3 mt-2 text-xs">
+                    <span className="text-gray-500">
+                      Cost:{" "}
+                      <strong>{formatNaira(getLocVal(loc, "cost"))}</strong>
+                    </span>
+                    <span className="text-gray-500">
+                      Wholesale:{" "}
+                      <strong className="text-purple-600">
+                        {formatNaira(getLocVal(loc, "wholesale"))}
+                      </strong>
+                    </span>
+                    <span className="text-gray-500">
+                      Retail:{" "}
+                      <strong className="text-green-600">
+                        {formatNaira(getLocVal(loc, "retail"))}
+                      </strong>
+                    </span>
+                  </div>
+                  {/* Delivery History */}
+                  {am && am.orders.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-gray-500 uppercase">
+                          <TrendingUp size={12} className="inline" /> Delivery
+                          History
+                        </p>
+                        {isCEO && (
+                          <button
+                            onClick={() => downloadHistory(loc)}
+                            className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <FileText size={10} /> PDF
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {am.orders.map((o) => (
+                          <div
+                            key={o.id}
+                            className="flex items-center justify-between py-1.5 px-3 bg-gray-50 rounded-lg text-xs"
+                          >
+                            <span className="font-medium">
+                              #{o.serialNumber} {o.customerName}{" "}
+                              <span className="text-gray-400">
+                                —{" "}
+                                {o.items
+                                  .map((i) => `${i.productName}(${i.quantity})`)
+                                  .join(", ")}
+                              </span>
+                            </span>
+                            <div className="text-right shrink-0">
+                              <p className="font-semibold">
+                                {formatNaira(o.amountPaid)}
+                              </p>
+                              <p className="text-gray-400">
+                                {o.actualDeliveryDate}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="card p-8 text-center">
+          <MapPin size={40} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-gray-500 text-sm">No agents found.</p>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">
+                {editing ? "Edit" : "Add"} Agent
+              </h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
+                <input
+                  className="input-field"
+                  value={form.name || ""}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
+                <input
+                  className="input-field"
+                  value={form.phone || ""}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
+                <input
+                  className="input-field"
+                  value={form.location || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, location: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button
+                onClick={() => setShowModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                className="btn-primary flex-1"
+                style={{ backgroundColor: brand.primaryColor }}
+              >
+                {editing ? "Update" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Modal */}
+      {showInventoryModal && selectedLocation && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowInventoryModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white">
+              <div>
+                <h3 className="font-semibold text-gray-900">
+                  Manage Inventory
+                </h3>
+                <p className="text-xs text-gray-500">{selectedLocation.name}</p>
+              </div>
+              <button
+                onClick={() => setShowInventoryModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {inventoryForm.map((inv, idx) => {
+                return (
+                  <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <select
+                        className="input-field flex-1 text-sm"
+                        value={inv.productId}
+                        onChange={(e) => {
+                          const u = [...inventoryForm];
+                          u[idx].productId = e.target.value;
+                          setInventoryForm(u);
+                        }}
+                      >
+                        {products.map((pp) => (
+                          <option key={pp.id} value={pp.id}>
+                            {pp.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() =>
+                          setInventoryForm(
+                            inventoryForm.filter((_, i) => i !== idx),
+                          )
+                        }
+                        className="text-red-500 p-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-gray-500">Qty</label>
+                        <input
+                          type="number"
+                          className="input-field text-sm"
+                          value={inv.quantity}
+                          onChange={(e) => {
+                            const u = [...inventoryForm];
+                            u[idx].quantity = Number(e.target.value);
+                            setInventoryForm(u);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500">
+                          Min Stock
+                        </label>
+                        <input
+                          type="number"
+                          className="input-field text-sm"
+                          value={inv.minStock}
+                          onChange={(e) => {
+                            const u = [...inventoryForm];
+                            u[idx].minStock = Number(e.target.value);
+                            setInventoryForm(u);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                onClick={addProductToInventory}
+                className="btn-secondary w-full text-sm"
+              >
+                <Plus size={14} className="inline mr-1" /> Add Product
+              </button>
+            </div>
+            <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+              <button
+                onClick={() => setShowInventoryModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveInventory}
+                className="btn-primary flex-1"
+                style={{ backgroundColor: brand.primaryColor }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

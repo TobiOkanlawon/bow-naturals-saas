@@ -1,0 +1,2216 @@
+import { useState, useMemo } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useBrand } from "../context/BrandContext";
+import {
+  formatNaira,
+  orderMatchesPhone,
+  ORDER_STATUS_OPTIONS,
+  getOrderStatusColor,
+  type DateRange,
+  getDateRangeFilter,
+} from "../data/store";
+import {
+  Plus,
+  Search,
+  X,
+  Phone,
+  MessageCircle,
+  Edit2,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  MapPin,
+  Package,
+  Trash2,
+  UserCheck,
+  AlertCircle,
+  Download,
+  FileText,
+  Copy,
+  Send,
+  Bell,
+  FileEdit,
+  Truck,
+} from "lucide-react";
+import { exportCSV, exportOrdersPDF } from "../utils/export";
+import {
+  useCreateOrder,
+  useDeleteOrder,
+  useLogistics,
+  useOrders,
+  useProducts,
+  useStaff,
+  useUpdateLogistics,
+  useUpdateOrder,
+  useUpdateProduct,
+} from "@/data/queries";
+
+const dealTypeLabels: Record<string, string> = {
+  retail: "Retail",
+  wholesale: "Wholesale",
+  dm: "DM/Group",
+  custom: "Custom",
+};
+
+const paymentStatusColors: Record<string, string> = {
+  unpaid: "bg-red-50 text-red-700",
+  partial: "bg-amber-50 text-amber-700",
+  paid: "bg-green-50 text-green-700",
+};
+
+export default function CRM() {
+  const { user, loading: authLoading } = useAuth();
+  const { brand } = useBrand();
+  const companyId = user?.companyId as string;
+
+  const isCEO = user?.role === "ceo";
+
+  // ---- Reads (all gated on companyId being resolved) ----
+  // const { data: staff = [] } = useStaff(companyId as string);
+  const { data: allOrders = [], isLoading: ordersLoading } =
+    useOrders(companyId);
+  const { data: products = [], isLoading: isProductsLoading } =
+    useProducts(companyId);
+  const { data: logistics = [] } = useLogistics(companyId);
+
+  // const currentStaff = staff.find((s) => s.fullName === user?.fullName);
+
+  // has the permission to mark an order as delivered
+  const canMarkDelivered =
+    // isCEO || currentStaff?.permissions.canMarkDelivered || false;
+    // TODO: everyone can mark orders as delivered for now
+    isCEO || true;
+
+  // Derived, not duplicated state. isCEO sees everything; staff see their own.
+  const orders = useMemo(
+    () =>
+      isCEO
+        ? allOrders
+        : allOrders.filter((o) => o.createdBy === user?.fullName),
+    [allOrders, isCEO, user?.fullName],
+  );
+
+  // ---- Mutations ----
+  const createOrderMutation = useCreateOrder();
+  const updateOrderMutation = useUpdateOrder();
+  const deleteOrderMutation = useDeleteOrder();
+  const updateLogisticsMutation = useUpdateLogistics();
+  const updateProductMutation = useUpdateProduct();
+
+  // ---- UI state (this part is fine to keep as useState) ----
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [productFilter, setProductFilter] = useState<string>("all");
+  const [showModal, setShowModal] = useState(false);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showEditDeliveryModal, setShowEditDeliveryModal] = useState(false);
+  const [showShippedModal, setShowShippedModal] = useState(false);
+  const [shippedAgentId, setShippedAgentId] = useState("");
+  const [shippedOrderId, setShippedOrderId] = useState("");
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [editing, setEditing] = useState<Order | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [form, setForm] = useState<Partial<Order>>({});
+  const [deliveryForm, setDeliveryForm] = useState({
+    deliveryFee: 0,
+    logisticsCompanyId: "",
+    actualDeliveryDate: "",
+  });
+  const [editDeliveryForm, setEditDeliveryForm] = useState({
+    deliveryFee: 0,
+    logisticsCompanyId: "",
+    actualDeliveryDate: "",
+    logisticsLocation: "",
+    amountPaid: 0,
+  });
+  const [selectedOrderForDelivery, setSelectedOrderForDelivery] =
+    useState<Order | null>(null);
+  const [orderItems, setOrderItems] = useState<Order["items"]>([]);
+  const [selectedTier, setSelectedTier] = useState<string>("Retail");
+  const [broadcastMsg, setBroadcastMsg] = useState("");
+  const [broadcastFilter, setBroadcastFilter] = useState<string>("all");
+  const [broadcastAgentFilter, setBroadcastAgentFilter] =
+    useState<string>("all");
+  const [broadcastProductFilter, setBroadcastProductFilter] =
+    useState<string>("all");
+  const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
+  const [invItems, setInvItems] = useState<
+    {
+      name: string;
+      qty: number;
+      price: number;
+      imgUrl: string;
+      benefits: string;
+    }[]
+  >([]);
+  const [invDelivery, setInvDelivery] = useState(0);
+  const [invPaid, setInvPaid] = useState(0);
+  const [invNote, setInvNote] = useState("");
+  const [showNotif, setShowNotif] = useState(false);
+
+  // Notifications are just a filtered view of allOrders — derive, don't copy into state.
+  const notifications = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    return allOrders.filter(
+      (o) =>
+        o.expectedDeliveryDate &&
+        o.expectedDeliveryDate <= today &&
+        o.orderStatus !== "delivered" &&
+        o.orderStatus !== "rejected" &&
+        o.orderStatus !== "failed",
+    );
+  }, [allOrders]);
+
+  const filtered = useMemo(
+    () =>
+      orders.filter((o) => {
+        const isFullNameMatch = o.customerName
+          .toLowerCase()
+          .includes(search.toLowerCase());
+
+        const isPhoneNumberMatch =
+          o.phoneNumber && o.phoneNumber.includes(search);
+
+        const isCityMatch =
+          o.city && o.city.toLowerCase().includes(search.toLowerCase());
+
+        const isSerialNumberMatch = String(o.serialNumber).includes(search);
+
+        statusFilter === "all";
+
+        const isStatusMatch =
+          o.orderStatus === statusFilter || o.paymentStatus === statusFilter;
+
+        const isOrderMatch = o;
+
+        const isIdMatch = o.items.some((i) => i.productId === productFilter);
+
+        return (
+          isFullNameMatch ||
+          isPhoneNumberMatch ||
+          isCityMatch ||
+          isSerialNumberMatch ||
+          isStatusMatch ||
+          isOrderMatch ||
+          isIdMatch
+        );
+      }),
+    [orders, search, statusFilter, productFilter],
+  );
+
+  const [analysisRange, setAnalysisRange] = useState<DateRange>("monthly");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+
+  const rangeAnalysis = useMemo(() => {
+    const { start, end } = getDateRangeFilter(
+      analysisRange,
+      customStart,
+      customEnd,
+    );
+    const inRange = orders.filter((o) => {
+      const d = o.orderDate ? new Date(o.orderDate) : new Date();
+      return d >= start && d <= end;
+    });
+    const delivered = inRange.filter((o) => o.orderStatus === "delivered");
+    return {
+      total: inRange.length,
+      pending: inRange.filter((o) => o.orderStatus === "pending").length,
+      confirmed: inRange.filter((o) => o.orderStatus === "confirmed").length,
+      shipped: inRange.filter((o) => o.orderStatus === "shipped").length,
+      delivered: delivered.length,
+      failed: inRange.filter(
+        (o) => o.orderStatus === "rejected" || o.orderStatus === "failed",
+      ).length,
+      revenue: delivered.reduce((s, o) => s + o.amountPaid!, 0),
+      profit: delivered.reduce((s, o) => s + o.grossProfit!, 0),
+    };
+  }, [orders, analysisRange, customStart, customEnd]);
+
+  const productAnalytics = useMemo(() => {
+    if (productFilter === "all") return null;
+    const prod = products.find((p) => p.id === productFilter);
+    if (!prod) return null;
+    const withProd = orders.filter((o) =>
+      o.items.some((i) => i.productId === productFilter),
+    );
+    const delivWithProd = withProd.filter((o) => o.orderStatus === "delivered");
+    let totalQty = 0,
+      totalRevenue = 0,
+      totalProfit = 0;
+    delivWithProd.forEach((o) =>
+      o.items
+        .filter((i) => i.productId === productFilter)
+        .forEach((i) => {
+          totalQty += i.quantity;
+          totalRevenue += i.unitPrice * i.quantity;
+          totalProfit += (i.unitPrice - i.costPrice) * i.quantity;
+        }),
+    );
+    return {
+      name: prod.name,
+      totalOrders: withProd.length,
+      deliveredOrders: delivWithProd.length,
+      totalQty,
+      totalRevenue,
+      totalProfit,
+    };
+  }, [productFilter, orders, products]);
+
+  const findMatchingOrders = (phone: string, whatsapp?: string) => {
+    const phones = [phone, whatsapp].filter(Boolean) as string[];
+    if (!phones.length) return [];
+    return orders.filter((o) => phones.some((p) => orderMatchesPhone(o, p)));
+  };
+
+  const checkCustomer = (phone: string, whatsapp?: string) => {
+    if (!phone && !whatsapp) return null;
+    const m = findMatchingOrders(phone, whatsapp);
+    if (m.length === 0) return null;
+    const d = m.find((o) => o.orderStatus === "delivered");
+    const u = m.some(
+      (o) => o.orderStatus === "uncommitted" || o.orderStatus === "pending",
+    );
+    if (d) return { type: "return" as const, prevOrder: d.serialNumber };
+    if (u) return { type: "uncommitted" as const, prevOrder: null };
+    return { type: "existing" as const, prevOrder: null };
+  };
+
+  const openAdd = () => {
+    setEditing(null);
+    setForm({
+      dealType: "retail",
+      orderStatus: "pending",
+      paymentStatus: "unpaid",
+      orderDate: new Date().toISOString().split("T")[0],
+      expectedDeliveryDate: "",
+      deliveryFee: 0,
+      amountPaid: 0,
+      notes: "",
+    });
+    setOrderItems([]);
+    setSelectedTier("Retail");
+    setShowModal(true);
+  };
+
+  const openEdit = (o: Order) => {
+    setEditing(o);
+    setForm({ ...o });
+    setOrderItems([...o.items]);
+    setShowModal(true);
+  };
+
+  const copyOrder = (o: Order) => {
+    navigator.clipboard.writeText(
+      [
+        `Order #${o.serialNumber}`,
+        `Customer: ${o.customerName}`,
+        `Phone: ${o.phoneNumber}`,
+        `Address: ${o.deliveryAddress}, ${o.city}, ${o.state}`,
+        `---`,
+        ...o.items.map(
+          (i) =>
+            `${i.productName} x${i.quantity} (${i.tierName}) = ${formatNaira(
+              i.unitPrice * i.quantity,
+            )}`,
+        ),
+        `---`,
+        `Total: ${formatNaira(o.totalAmount!)}`,
+        `Paid: ${formatNaira(o.amountPaid!)}`,
+      ].join("\n"),
+    );
+    alert("Copied!");
+  };
+
+  const openDeliveryModal = (o: Order) => {
+    setSelectedOrderForDelivery(o);
+    setDeliveryForm({
+      deliveryFee: o.deliveryFee || 0,
+      logisticsCompanyId: o.logisticsCompanyId || "",
+      actualDeliveryDate:
+        o.actualDeliveryDate || new Date().toISOString().split("T")[0],
+    });
+    setShowDeliveryModal(true);
+  };
+
+  const openEditDeliveryModal = (o: Order) => {
+    setSelectedOrderForDelivery(o);
+    setEditDeliveryForm({
+      deliveryFee: o.deliveryFee,
+      logisticsCompanyId: o.logisticsCompanyId,
+      actualDeliveryDate: o.actualDeliveryDate,
+      logisticsLocation: o.logisticsLocation,
+      amountPaid: o.amountPaid,
+    });
+    setShowEditDeliveryModal(true);
+  };
+
+  const openInvoice = (o: Order) => {
+    setInvoiceOrder(o);
+    setInvItems(
+      o.items.map((i) => {
+        const p = products!!.find((x) => x.id === i.productId);
+        return {
+          name: i.productName,
+          qty: i.quantity,
+          price: i.unitPrice * i.quantity,
+          imgUrl: p?.imageUrl || "",
+          benefits: p?.benefits || "",
+        };
+      }),
+    );
+    setInvDelivery(o.deliveryFee);
+    setInvPaid(o.amountPaid);
+    setInvNote(
+      `Hi ${o.customerName.split(" ")[0]}, you ordered ${o.items
+        .map((i) => `${i.productName} (x${i.quantity})`)
+        .join(", ")}. Are you available to receive it today?`,
+    );
+    setShowInvoiceModal(true);
+  };
+
+  const addItem = () => {
+    if (!products!.length) return;
+    const p = products![0];
+    const t = p?.tiers.find((x) => x.name === selectedTier) || p?.tiers[0];
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: p.id,
+        productName: p.name,
+        quantity: 1,
+        unitPrice: t.sellingPrice,
+        costPrice: t.costPrice,
+        tierName: t.name,
+      },
+    ]);
+  };
+
+  const updateItem = (idx: number, field: string, value: any) => {
+    const u = [...orderItems];
+    if (field === "productId") {
+      const p = products.find((x) => x.id === value);
+      if (p) {
+        const t = p.tiers.find((x) => x.name === selectedTier) || p.tiers[0];
+        u[idx] = {
+          ...u[idx],
+          productId: value,
+          productName: p.name,
+          unitPrice: t.sellingPrice,
+          costPrice: t.costPrice,
+          tierName: t.name,
+        };
+      }
+    } else if (field === "tierName") {
+      const p = products.find((x) => x.id === u[idx].productId);
+      if (p) {
+        const t = p.tiers.find((x) => x.name === value) || p.tiers[0];
+        u[idx] = {
+          ...u[idx],
+          tierName: value,
+          unitPrice: t.sellingPrice,
+          costPrice: t.costPrice,
+        };
+      }
+    } else {
+      (u[idx] as any)[field] = value;
+    }
+    setOrderItems(u);
+  };
+
+  const removeItem = (idx: number) =>
+    setOrderItems(orderItems.filter((_, i) => i !== idx));
+
+  const calculateTotals = () => ({
+    totalAmount: orderItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
+    totalCost: orderItems.reduce((s, i) => s + i.costPrice * i.quantity, 0),
+  });
+
+  const save = async () => {
+    if (!form.customerName || !form.phoneNumber || !orderItems.length) return;
+    const { totalAmount, totalCost } = calculateTotals();
+    const amountPaid = form.amountPaid || 0;
+
+    if (editing) {
+      await updateOrderMutation.mutateAsync({
+        companyId,
+        id: editing.id,
+        data: {
+          ...form,
+          items: orderItems,
+          totalAmount,
+          totalCost,
+          grossProfit:
+            editing.orderStatus === "delivered"
+              ? amountPaid - totalCost - (form.deliveryFee ?? 0)
+              : 0,
+        },
+      });
+    } else {
+      await createOrderMutation.mutateAsync({
+        companyId,
+        data: {
+          ...form,
+          items: orderItems,
+          totalAmount,
+          totalCost,
+          amountPaid,
+          grossProfit: 0,
+        } as Omit<Order, "id" | "companyId">,
+      });
+    }
+    setShowModal(false);
+  };
+
+  const deleteOrder = async (id: string) => {
+    if (!confirm("Delete this order?")) return;
+    await deleteOrderMutation.mutateAsync({ companyId, id });
+  };
+
+  const markAsDelivered = async () => {
+    if (
+      !selectedOrderForDelivery ||
+      !deliveryForm.logisticsCompanyId ||
+      !deliveryForm.actualDeliveryDate
+    )
+      return;
+
+    const order = selectedOrderForDelivery;
+    const loc = logistics.find((l) => l.id === deliveryForm.logisticsCompanyId);
+    const fup = new Date(deliveryForm.actualDeliveryDate);
+    fup.setDate(fup.getDate() + 30);
+
+    // Decrement stock only on the logistics record the order shipped from.
+    if (loc) {
+      const newInventory = loc.inventory.map((inv) => {
+        const oi = order.items.find((i) => i.productId === inv.productId);
+        return oi
+          ? { ...inv, quantity: Math.max(0, inv.quantity - oi.quantity) }
+          : inv;
+      });
+      await updateLogisticsMutation.mutateAsync({
+        companyId,
+        id: loc.id,
+        data: { inventory: newInventory },
+      });
+    }
+
+    // Recompute total stock per affected product across all locations, then persist each.
+    const affectedProductIds = [
+      ...new Set(order.items.map((i) => i.productId)),
+    ];
+    const updatedLogisticsSnapshot = logistics.map((l) =>
+      l.id === deliveryForm.logisticsCompanyId
+        ? {
+            ...l,
+            inventory: l.inventory.map((inv) => {
+              const oi = order.items.find((i) => i.productId === inv.productId);
+              return oi
+                ? { ...inv, quantity: Math.max(0, inv.quantity - oi.quantity) }
+                : inv;
+            }),
+          }
+        : l,
+    );
+
+    await Promise.all(
+      affectedProductIds.map((productId) => {
+        const totalStock = updatedLogisticsSnapshot.reduce(
+          (s, l) =>
+            s +
+            (l.inventory.find((i) => i.productId === productId)?.quantity || 0),
+          0,
+        );
+        return updateProductMutation.mutateAsync({
+          companyId,
+          id: productId,
+          data: {
+            totalStock,
+            status: totalStock === 0 ? "out-of-stock" : "in-stock",
+          } as Partial<Product>,
+        });
+      }),
+    );
+
+    const itemsWithStock = order.items.map((item) => {
+      const remaining = updatedLogisticsSnapshot.reduce(
+        (s, l) =>
+          s +
+          (l.inventory.find((i) => i.productId === item.productId)?.quantity ||
+            0),
+        0,
+      );
+      return { ...item, stockAfterDelivery: remaining };
+    });
+
+    await updateOrderMutation.mutateAsync({
+      companyId,
+      id: order.id,
+      data: {
+        orderStatus: "delivered" as OrderStatus,
+        items: itemsWithStock,
+        deliveryFee: deliveryForm.deliveryFee,
+        logisticsCompanyId: deliveryForm.logisticsCompanyId,
+        logisticsLocation: loc?.location || "",
+        actualDeliveryDate: deliveryForm.actualDeliveryDate,
+        followUpDate: fup.toISOString().split("T")[0],
+        grossProfit:
+          order.amountPaid - order.totalCost - deliveryForm.deliveryFee,
+      },
+    });
+
+    setShowDeliveryModal(false);
+  };
+
+  const saveEditDelivery = async () => {
+    if (!selectedOrderForDelivery) return;
+    const loc = logistics.find(
+      (l) => l.id === editDeliveryForm.logisticsCompanyId,
+    );
+    await updateOrderMutation.mutateAsync({
+      companyId,
+      id: selectedOrderForDelivery.id,
+      data: {
+        deliveryFee: editDeliveryForm.deliveryFee,
+        logisticsCompanyId: editDeliveryForm.logisticsCompanyId,
+        logisticsLocation:
+          loc?.location || selectedOrderForDelivery.logisticsLocation,
+        actualDeliveryDate: editDeliveryForm.actualDeliveryDate,
+        amountPaid: editDeliveryForm.amountPaid,
+        grossProfit:
+          editDeliveryForm.amountPaid -
+          selectedOrderForDelivery.totalCost -
+          editDeliveryForm.deliveryFee,
+      },
+    });
+    setShowEditDeliveryModal(false);
+  };
+
+  const confirmShipped = async () => {
+    if (!shippedOrderId || !shippedAgentId) return;
+    const loc = logistics.find((l) => l.id === shippedAgentId);
+    await updateOrderMutation.mutateAsync({
+      companyId,
+      id: shippedOrderId,
+      data: {
+        orderStatus: "shipped" as OrderStatus,
+        logisticsCompanyId: shippedAgentId,
+        logisticsLocation: loc?.location || "",
+      },
+    });
+    setShowShippedModal(false);
+  };
+
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    if (status === "delivered" && !canMarkDelivered) {
+      alert("No permission");
+      return;
+    }
+    if (status === "delivered") {
+      const o = orders.find((x) => x.id === orderId);
+      if (o) openDeliveryModal(o);
+      return;
+    }
+    if (status === "shipped") {
+      setShippedOrderId(orderId);
+      setShippedAgentId("");
+      setShowShippedModal(true);
+      return;
+    }
+    await updateOrderMutation.mutateAsync({
+      companyId,
+      id: orderId,
+      data: { orderStatus: status },
+    });
+  };
+
+  const openWhatsApp = (n: string) =>
+    window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
+  const callCustomer = (n: string) => window.open(`tel:${n}`, "_self");
+  const getTotalItems = (o: Order) =>
+    o.items.reduce((s, i) => s + i.quantity, 0);
+  const getProductsSummary = (o: Order) =>
+    o.items.length === 0
+      ? "No items"
+      : o.items.length === 1
+        ? `${o.items[0].productName} (${o.items[0].quantity})`
+        : `${o.items[0].productName} +${o.items.length - 1} more`;
+
+  const ci =
+    form.phoneNumber || form.whatsappNumber
+      ? checkCustomer(form.phoneNumber || "", form.whatsappNumber || "")
+      : null;
+
+  const getBroadcastTargets = () => {
+    let t = orders;
+    if (broadcastFilter !== "all")
+      t = t.filter((o) => o.orderStatus === broadcastFilter);
+    if (broadcastAgentFilter !== "all")
+      t = t.filter((o) => o.logisticsCompanyId === broadcastAgentFilter);
+    if (broadcastProductFilter !== "all")
+      t = t.filter((o) =>
+        o.items.some((i) => i.productId === broadcastProductFilter),
+      );
+    return t;
+  };
+  const getBroadcastNumbers = () => [
+    ...new Set(
+      getBroadcastTargets()
+        .map((o) => o.whatsappNumber || o.phoneNumber)
+        .filter(Boolean),
+    ),
+  ];
+  const sendBroadcast = () => {
+    if (!broadcastMsg.trim()) return;
+    const nums = getBroadcastNumbers();
+    const msg = encodeURIComponent(broadcastMsg);
+    nums.forEach((n, i) => {
+      setTimeout(
+        () =>
+          window.open(
+            `https://wa.me/${n.replace(/[^0-9]/g, "")}?text=${msg}`,
+            "_blank",
+          ),
+        i * 500,
+      );
+    });
+    setShowBroadcastModal(false);
+    setBroadcastMsg("");
+  };
+
+  const invSubtotal = invItems.reduce((s, i) => s + i.price, 0);
+  const invBalance = invSubtotal + invDelivery - invPaid;
+
+  const sendInvoiceToWhatsApp = () => {
+    if (!invoiceOrder) return;
+    // ...unchanged from your version — this part had no bugs, only omitted here for length.
+  };
+
+  // ---- Guard rendering until auth + companyId are actually resolved ----
+  if (authLoading || !companyId) {
+    return <div>Loading…</div>;
+  }
+
+  if (ordersLoading) {
+    return <div>Loading orders…</div>;
+  }
+
+  if (isProductsLoading) {
+    return <div>Loading orders…</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {notifications.length > 0 && (
+        <div
+          className="card p-3 bg-amber-50 border-amber-200 flex items-center gap-3 cursor-pointer"
+          onClick={() => setShowNotif(!showNotif)}
+        >
+          <Bell size={18} className="text-amber-600 animate-pulse" />
+          <span className="text-sm font-medium text-amber-800">
+            {notifications.length} order(s) reached expected delivery date!
+          </span>
+          {showNotif && (
+            <div className="ml-auto text-xs text-amber-600">
+              {notifications
+                .map((o) => `#${o.serialNumber} ${o.customerName}`)
+                .join(" | ")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Date Range Analysis */}
+      <div className="card p-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Calendar size={14} className="text-gray-400" />
+          {(
+            [
+              "daily",
+              "weekly",
+              "monthly",
+              "yearly",
+              "infinite",
+              "custom",
+            ] as DateRange[]
+          ).map((r) => (
+            <button
+              key={r}
+              onClick={() => setAnalysisRange(r)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${analysisRange === r ? "text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+              style={
+                analysisRange === r
+                  ? { backgroundColor: brand.primaryColor }
+                  : {}
+              }
+            >
+              {r === "daily"
+                ? "Today"
+                : r === "weekly"
+                  ? "Week"
+                  : r === "monthly"
+                    ? "Month"
+                    : r === "yearly"
+                      ? "Year"
+                      : r === "infinite"
+                        ? "All"
+                        : "Custom"}
+            </button>
+          ))}
+          {analysisRange === "custom" && (
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="input-field w-auto text-[10px] py-0.5"
+              />
+              <span className="text-[10px] text-gray-400">to</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="input-field w-auto text-[10px] py-0.5"
+              />
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+          {[
+            { v: rangeAnalysis.total, l: "Orders", c: "text-gray-900" },
+            { v: rangeAnalysis.pending, l: "Pending", c: "text-amber-600" },
+            { v: rangeAnalysis.confirmed, l: "Confirmed", c: "text-blue-600" },
+            { v: rangeAnalysis.shipped, l: "Shipped", c: "text-purple-600" },
+            { v: rangeAnalysis.delivered, l: "Delivered", c: "text-green-600" },
+            { v: rangeAnalysis.failed, l: "Failed", c: "text-red-600" },
+            {
+              v: formatNaira(rangeAnalysis.revenue),
+              l: "Revenue",
+              c: "text-indigo-600",
+            },
+            {
+              v: formatNaira(rangeAnalysis.profit),
+              l: "Profit",
+              c: "text-emerald-600",
+            },
+          ].map((s, i) => (
+            <div key={i} className="text-center">
+              <p className={`text-sm font-bold ${s.c}`}>{s.v}</p>
+              <p className="text-[8px] text-gray-500">{s.l}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="flex flex-1 gap-2 max-w-2xl flex-wrap">
+          <div className="relative flex-1 min-w-[140px]">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="input-field pl-9"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="input-field w-auto text-xs"
+          >
+            <option value="all">All Status</option>
+            {ORDER_STATUS_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+            <option value="unpaid">Unpaid</option>
+            <option value="partial">Partial</option>
+            <option value="paid">Paid</option>
+          </select>
+          <select
+            value={productFilter}
+            onChange={(e) => setProductFilter(e.target.value)}
+            className="input-field w-auto text-xs"
+          >
+            <option value="all">All Products</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isCEO && (
+            <button
+              onClick={() => setShowBroadcastModal(true)}
+              className="btn-secondary text-xs flex items-center gap-1"
+            >
+              <Send size={14} /> Broadcast
+            </button>
+          )}
+          {isCEO && (
+            <button
+              onClick={() => exportCSV(filtered, "orders")}
+              className="btn-secondary text-xs flex items-center gap-1"
+            >
+              <Download size={14} /> CSV
+            </button>
+          )}
+          {isCEO && (
+            <button
+              onClick={() => exportOrdersPDF(filtered, "Orders Report")}
+              className="btn-secondary text-xs flex items-center gap-1"
+            >
+              <FileText size={14} /> PDF
+            </button>
+          )}
+          <button
+            onClick={openAdd}
+            className="btn-primary flex items-center gap-2"
+            style={{ backgroundColor: brand.primaryColor }}
+          >
+            <Plus size={16} /> New Order
+          </button>
+        </div>
+      </div>
+
+      {/* Product Analytics */}
+      {productAnalytics && (
+        <div
+          className="card p-4 border-l-4"
+          style={{ borderLeftColor: brand.primaryColor }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Package size={16} style={{ color: brand.primaryColor }} />
+            <h3 className="text-sm font-semibold text-gray-900">
+              {productAnalytics.name} — Analytics
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-900">
+                {productAnalytics.totalOrders}
+              </p>
+              <p className="text-[9px] text-gray-500">Orders</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-green-600">
+                {productAnalytics.deliveredOrders}
+              </p>
+              <p className="text-[9px] text-gray-500">Delivered</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-blue-600">
+                {productAnalytics.totalQty}
+              </p>
+              <p className="text-[9px] text-gray-500">Units Sold</p>
+            </div>
+            <div className="text-center">
+              <p
+                className="text-lg font-bold"
+                style={{ color: brand.primaryColor }}
+              >
+                {formatNaira(productAnalytics.totalRevenue)}
+              </p>
+              <p className="text-[9px] text-gray-500">Revenue</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-purple-600">
+                {formatNaira(productAnalytics.totalProfit)}
+              </p>
+              <p className="text-[9px] text-gray-500">Profit</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Orders List */}
+      <div className="space-y-2">
+        {filtered.map((order) => (
+          <div key={order.id} className="card overflow-hidden">
+            <div
+              className="p-4 flex items-start gap-3 cursor-pointer"
+              onClick={() =>
+                setExpandedId(expandedId === order.id ? null : order.id)
+              }
+            >
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
+                style={{ backgroundColor: brand.primaryColor }}
+              >
+                #{order.serialNumber}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-semibold text-gray-900">
+                    {order.customerName}
+                  </h4>
+                  {(() => {
+                    const others = allOrders.filter(
+                      (o) =>
+                        o.id !== order.id &&
+                        (orderMatchesPhone(o, order.phoneNumber) ||
+                          (order.whatsappNumber &&
+                            orderMatchesPhone(o, order.whatsappNumber))),
+                    );
+                    const pd = others.find(
+                      (o) => o.orderStatus === "delivered",
+                    );
+                    const pu = others.some(
+                      (o) =>
+                        o.orderStatus === "uncommitted" ||
+                        o.orderStatus === "pending",
+                    );
+                    if (pd)
+                      return (
+                        <span className="badge text-[10px] bg-green-100 text-green-700 flex items-center gap-1">
+                          <UserCheck size={10} /> Return
+                        </span>
+                      );
+                    if (pu)
+                      return (
+                        <span className="badge text-[10px] bg-orange-100 text-orange-700 flex items-center gap-1">
+                          <AlertCircle size={10} /> Unconverted
+                        </span>
+                      );
+                    return null;
+                  })()}
+                  <span
+                    className={`badge text-[10px] ${getOrderStatusColor(order.orderStatus)}`}
+                  >
+                    {ORDER_STATUS_OPTIONS.find(
+                      (s) => s.value === order.orderStatus,
+                    )?.label || order.orderStatus}
+                  </span>
+                  <span
+                    className={`badge text-[10px] ${paymentStatusColors[order.paymentStatus]}`}
+                  >
+                    {order.paymentStatus}
+                  </span>
+                  {order.logisticsLocation &&
+                    order.orderStatus === "shipped" && (
+                      <span className="badge text-[10px] bg-purple-50 text-purple-700 flex items-center gap-1">
+                        <Truck size={10} /> {order.logisticsLocation}
+                      </span>
+                    )}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {order.city}, {order.state} •{" "}
+                  {dealTypeLabels[order.dealType] || order.dealType} •{" "}
+                  {order.orderDate}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Package size={12} className="text-gray-400" />
+                  <span className="text-xs text-gray-600 font-medium">
+                    {getProductsSummary(order)}
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    ({getTotalItems(order)} items)
+                  </span>
+                </div>
+              </div>
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-gray-900">
+                  {formatNaira(order.totalAmount)}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Paid: {formatNaira(order.amountPaid)}
+                </p>
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    callCustomer(order.phoneNumber as string);
+                  }}
+                  className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"
+                  title="Call"
+                >
+                  <Phone size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openWhatsApp(order.whatsappNumber);
+                  }}
+                  className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"
+                  title="WhatsApp"
+                >
+                  <MessageCircle size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openInvoice(order);
+                  }}
+                  className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg"
+                  title="Invoice"
+                >
+                  <FileText size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    copyOrder(order);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg"
+                  title="Copy"
+                >
+                  <Copy size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(order);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                  title="Edit"
+                >
+                  <Edit2 size={14} />
+                </button>
+                {isCEO && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteOrder(order.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+                {expandedId === order.id ? (
+                  <ChevronUp size={16} className="text-gray-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-gray-400" />
+                )}
+              </div>
+            </div>
+            {expandedId === order.id && (
+              <div className="px-4 pb-4 border-t border-gray-100">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-xs">
+                  <div>
+                    <p className="text-gray-400">Phone</p>
+                    <button
+                      onClick={() => callCustomer(order.phoneNumber)}
+                      className="text-blue-600 flex items-center gap-1 hover:underline"
+                    >
+                      <Phone size={10} /> {order.phoneNumber}
+                    </button>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">WhatsApp</p>
+                    <button
+                      onClick={() => openWhatsApp(order.whatsappNumber)}
+                      className="text-green-600 flex items-center gap-1 hover:underline"
+                    >
+                      <MessageCircle size={10} /> {order.whatsappNumber}
+                    </button>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Address</p>
+                    <p className="text-gray-700">
+                      <MapPin size={10} className="inline" />{" "}
+                      {order.deliveryAddress}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Expected</p>
+                    <p className="text-gray-700">
+                      <Calendar size={10} className="inline" />{" "}
+                      {order.expectedDeliveryDate || "Not set"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">
+                    <Package size={12} className="inline" /> Items (
+                    {getTotalItems(order)})
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                    {order.items.map((item, i) => (
+                      <div key={i} className="flex justify-between text-xs">
+                        <div>
+                          <span className="font-medium">
+                            {item.productName}
+                          </span>{" "}
+                          x{item.quantity}{" "}
+                          <span className="text-gray-400">
+                            ({item.tierName})
+                          </span>
+                          {item.stockAfterDelivery !== undefined && (
+                            <span className="ml-2 text-gray-400">
+                              [{item.stockAfterDelivery} left]
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-medium">
+                          {formatNaira(item.unitPrice * item.quantity)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 pt-1 mt-1 flex justify-between text-xs font-semibold">
+                      <span>Total</span>
+                      <span>{formatNaira(order.totalAmount)}</span>
+                    </div>
+                  </div>
+                </div>
+                {order.orderStatus === "delivered" && (
+                  <div className="mt-3 pt-3 border-t border-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gray-500">
+                        Delivery
+                      </p>
+                      {isCEO && (
+                        <button
+                          onClick={() => openEditDeliveryModal(order)}
+                          className="text-xs text-blue-600 flex items-center gap-1 hover:underline"
+                        >
+                          <FileEdit size={10} /> Edit
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <p className="text-gray-400">Fee</p>
+                        <p>{formatNaira(order.deliveryFee)}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">Agent</p>
+                        <p>{order.logisticsLocation || "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">Delivered</p>
+                        <p>{order.actualDeliveryDate}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">Net Profit</p>
+                        <p
+                          className={`font-bold ${order.grossProfit >= 0 ? "text-green-600" : "text-red-600"}`}
+                        >
+                          {formatNaira(order.grossProfit)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {order.notes && (
+                  <div className="mt-3 pt-3 border-t border-gray-50">
+                    <p className="text-xs text-gray-400">Notes</p>
+                    <p className="text-xs text-gray-600">{order.notes}</p>
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap gap-2">
+                  <select
+                    value={order.orderStatus}
+                    onChange={(e) =>
+                      updateOrderStatus(order.id, e.target.value as OrderStatus)
+                    }
+                    className="input-field text-xs py-1 w-auto"
+                  >
+                    {ORDER_STATUS_OPTIONS.map((s) => (
+                      <option
+                        key={s.value}
+                        value={s.value}
+                        disabled={s.value === "delivered" && !canMarkDelivered}
+                      >
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400 self-center">
+                    by: {order.createdBy}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {filtered.length === 0 && (
+        <div className="card p-8 text-center">
+          <Package size={40} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-gray-500 text-sm">No orders found.</p>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
+              <h3 className="font-semibold text-gray-900">
+                {editing ? "Edit Order" : "New Order"}
+              </h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Customer *
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.customerName || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, customerName: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Phone *
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.phoneNumber || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, phoneNumber: e.target.value })
+                    }
+                    placeholder="+234"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    WhatsApp
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.whatsappNumber || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, whatsappNumber: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Deal Type
+                  </label>
+                  <select
+                    className="input-field"
+                    value={form.dealType || "retail"}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        dealType: e.target.value as Order["dealType"],
+                      })
+                    }
+                  >
+                    <option value="retail">Retail</option>
+                    <option value="wholesale">Wholesale</option>
+                    <option value="dm">DM/Group</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+              </div>
+              {ci && (
+                <div
+                  className={`rounded-lg p-3 text-xs ${ci.type === "return" ? "bg-green-50 border border-green-200 text-green-700" : "bg-orange-50 border border-orange-200 text-orange-700"}`}
+                >
+                  {ci.type === "return" ? (
+                    <>
+                      <UserCheck size={14} className="inline" />{" "}
+                      <strong>Return!</strong> #{ci.prevOrder}
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle size={14} className="inline" />{" "}
+                      <strong>Unconverted</strong>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-3 sm:col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Address
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.deliveryAddress || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, deliveryAddress: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    City
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.city || ""}
+                    onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    State
+                  </label>
+                  <input
+                    className="input-field"
+                    value={form.state || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, state: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Order Date
+                  </label>
+                  <input
+                    className="input-field"
+                    type="date"
+                    value={form.orderDate || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, orderDate: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Expected Delivery
+                  </label>
+                  <input
+                    className="input-field"
+                    type="date"
+                    value={form.expectedDeliveryDate || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, expectedDeliveryDate: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Items</h4>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="input-field text-xs py-1 w-auto"
+                      value={selectedTier}
+                      onChange={(e) => setSelectedTier(e.target.value)}
+                    >
+                      {products.length > 0 &&
+                        products[0].tiers.length > 0 &&
+                        products[0].tiers.map((t) => (
+                          <option key={t.name} value={t.name}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={addItem}
+                      className="btn-secondary text-xs py-1 px-2"
+                    >
+                      <Plus size={12} className="inline" /> Add
+                    </button>
+                  </div>
+                </div>
+                {orderItems.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">
+                    No items
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {orderItems.map((item, idx) => (
+                      <div key={idx} className="bg-gray-50 p-3 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="input-field flex-1 text-xs"
+                            value={item.productId}
+                            onChange={(e) =>
+                              updateItem(idx, "productId", e.target.value)
+                            }
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            className="input-field w-24 text-xs"
+                            value={item.tierName}
+                            onChange={(e) =>
+                              updateItem(idx, "tierName", e.target.value)
+                            }
+                          >
+                            {products
+                              .find((p) => p.id === item.productId)
+                              ?.tiers.map((t) => (
+                                <option key={t.name} value={t.name}>
+                                  {t.name}
+                                </option>
+                              ))}
+                          </select>
+                          <input
+                            type="number"
+                            className="input-field w-16 text-xs"
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateItem(
+                                idx,
+                                "quantity",
+                                Number(e.target.value),
+                              )
+                            }
+                            min={1}
+                          />
+                          <button
+                            onClick={() => removeItem(idx)}
+                            className="text-red-500 p-1"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        {isCEO && (
+                          <div className="flex justify-between mt-1 text-[10px] text-gray-500">
+                            <span>
+                              Cost:{" "}
+                              {formatNaira(item.costPrice * item.quantity)}
+                            </span>
+                            <span>
+                              Sell:{" "}
+                              {formatNaira(item.unitPrice * item.quantity)}
+                            </span>
+                            <span className="text-green-600">
+                              +
+                              {formatNaira(
+                                (item.unitPrice - item.costPrice) *
+                                  item.quantity,
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {isCEO && (
+                      <div className="bg-gray-100 rounded-lg p-3">
+                        <div className="flex justify-between text-xs font-semibold text-green-600">
+                          <span>Profit:</span>
+                          <span>
+                            {formatNaira(
+                              calculateTotals().totalAmount -
+                                calculateTotals().totalCost,
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="border-t pt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Payment
+                  </label>
+                  <select
+                    className="input-field"
+                    value={form.paymentStatus || "unpaid"}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        paymentStatus: e.target.value as Order["paymentStatus"],
+                      })
+                    }
+                  >
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Amount Paid (₦)
+                  </label>
+                  <input
+                    className="input-field"
+                    type="number"
+                    value={form.amountPaid || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, amountPaid: Number(e.target.value) })
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={2}
+                  value={form.notes || ""}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
+              <button
+                onClick={() => setShowModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                className="btn-primary flex-1"
+                style={{ backgroundColor: brand.primaryColor }}
+              >
+                {editing ? "Update" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Modal */}
+      {showDeliveryModal && selectedOrderForDelivery && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowDeliveryModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">Mark as Delivered</h3>
+              <button
+                onClick={() => setShowDeliveryModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="font-medium">
+                  Order #{selectedOrderForDelivery.serialNumber} —{" "}
+                  {selectedOrderForDelivery.customerName}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Delivery Fee (₦)
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  value={deliveryForm.deliveryFee}
+                  onChange={(e) =>
+                    setDeliveryForm({
+                      ...deliveryForm,
+                      deliveryFee: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Agent *
+                </label>
+                <select
+                  className="input-field"
+                  value={deliveryForm.logisticsCompanyId}
+                  onChange={(e) =>
+                    setDeliveryForm({
+                      ...deliveryForm,
+                      logisticsCompanyId: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">Select...</option>
+                  {logistics.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} - {l.location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Delivery Date *
+                </label>
+                <input
+                  className="input-field"
+                  type="date"
+                  value={deliveryForm.actualDeliveryDate}
+                  onChange={(e) =>
+                    setDeliveryForm({
+                      ...deliveryForm,
+                      actualDeliveryDate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="bg-green-50 rounded-lg p-3 text-xs text-green-700">
+                <strong>Net Profit:</strong>{" "}
+                {formatNaira(
+                  selectedOrderForDelivery.amountPaid -
+                    selectedOrderForDelivery.totalCost -
+                    deliveryForm.deliveryFee,
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button
+                onClick={() => setShowDeliveryModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={markAsDelivered}
+                className="btn-primary flex-1 bg-green-600"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Delivery Modal */}
+      {showEditDeliveryModal && selectedOrderForDelivery && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowEditDeliveryModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">Edit Delivery</h3>
+              <button
+                onClick={() => setShowEditDeliveryModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fee (₦)
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  value={editDeliveryForm.deliveryFee}
+                  onChange={(e) =>
+                    setEditDeliveryForm({
+                      ...editDeliveryForm,
+                      deliveryFee: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Paid (₦)
+                </label>
+                <input
+                  className="input-field"
+                  type="number"
+                  value={editDeliveryForm.amountPaid}
+                  onChange={(e) =>
+                    setEditDeliveryForm({
+                      ...editDeliveryForm,
+                      amountPaid: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Agent
+                </label>
+                <select
+                  className="input-field"
+                  value={editDeliveryForm.logisticsCompanyId}
+                  onChange={(e) =>
+                    setEditDeliveryForm({
+                      ...editDeliveryForm,
+                      logisticsCompanyId: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">Select...</option>
+                  {logistics.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} - {l.location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Date
+                </label>
+                <input
+                  className="input-field"
+                  type="date"
+                  value={editDeliveryForm.actualDeliveryDate}
+                  onChange={(e) =>
+                    setEditDeliveryForm({
+                      ...editDeliveryForm,
+                      actualDeliveryDate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button
+                onClick={() => setShowEditDeliveryModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditDelivery}
+                className="btn-primary flex-1"
+                style={{ backgroundColor: brand.primaryColor }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shipped Modal */}
+      {showShippedModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowShippedModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Truck size={18} /> Shipped From
+              </h3>
+              <button
+                onClick={() => setShowShippedModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-500">Select agent:</p>
+              <select
+                className="input-field"
+                value={shippedAgentId}
+                onChange={(e) => setShippedAgentId(e.target.value)}
+              >
+                <option value="">Select...</option>
+                {logistics.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} - {l.location}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button
+                onClick={() => setShowShippedModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmShipped}
+                disabled={!shippedAgentId}
+                className="btn-primary flex-1 bg-purple-600 disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Broadcast Modal */}
+      {showBroadcastModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowBroadcastModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">
+                WhatsApp Broadcast
+              </h3>
+              <button
+                onClick={() => setShowBroadcastModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Order status
+                </label>
+                <select
+                  className="input-field"
+                  value={broadcastFilter}
+                  onChange={(e) => setBroadcastFilter(e.target.value)}
+                >
+                  <option value="all">All</option>
+                  {ORDER_STATUS_OPTIONS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Agent
+                </label>
+                <select
+                  className="input-field"
+                  value={broadcastAgentFilter}
+                  onChange={(e) => setBroadcastAgentFilter(e.target.value)}
+                >
+                  <option value="all">All</option>
+                  {logistics.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Product
+                </label>
+                <select
+                  className="input-field"
+                  value={broadcastProductFilter}
+                  onChange={(e) => setBroadcastProductFilter(e.target.value)}
+                >
+                  <option value="all">All Products</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p
+                className="text-xs font-semibold"
+                style={{ color: brand.primaryColor }}
+              >
+                {getBroadcastNumbers().length} contacts
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Message
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={4}
+                  value={broadcastMsg}
+                  onChange={(e) => setBroadcastMsg(e.target.value)}
+                  placeholder="Type your message..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 p-5 border-t">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    getBroadcastNumbers().join(", "),
+                  );
+                  alert(`${getBroadcastNumbers().length} numbers copied!`);
+                }}
+                className="btn-secondary flex-1 text-xs"
+              >
+                Copy Numbers
+              </button>
+              <button
+                onClick={sendBroadcast}
+                className="btn-primary flex-1 bg-green-600 text-xs"
+              >
+                <MessageCircle size={14} className="inline mr-1" /> Send All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && invoiceOrder && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowInvoiceModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-900">
+                {brand.name} Invoice
+              </h3>
+              <button
+                onClick={() => setShowInvoiceModal(false)}
+                className="text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="text-center">
+                {brand.logoUrl ? (
+                  <img
+                    src={brand.logoUrl}
+                    alt=""
+                    className="w-14 h-14 rounded-xl mx-auto mb-2 object-cover"
+                  />
+                ) : (
+                  <div
+                    className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl mx-auto mb-2"
+                    style={{ backgroundColor: brand.primaryColor }}
+                  >
+                    {brand.logoEmoji}
+                  </div>
+                )}
+                <h2
+                  className="text-xl font-bold"
+                  style={{ color: brand.primaryColor }}
+                >
+                  {brand.name} Invoice
+                </h2>
+                <p className="text-xs text-gray-400">{brand.tagline}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-gray-400">Customer</p>
+                  <p className="font-semibold">{invoiceOrder.customerName}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Phone</p>
+                  <p>{invoiceOrder.phoneNumber}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-gray-400">Address</p>
+                  <p>
+                    {invoiceOrder.deliveryAddress}, {invoiceOrder.city},{" "}
+                    {invoiceOrder.state}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Date</p>
+                  <p>{invoiceOrder.orderDate}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">#</p>
+                  <p className="font-bold">{invoiceOrder.serialNumber}</p>
+                </div>
+              </div>
+              <textarea
+                className="input-field text-xs italic text-blue-700 bg-blue-50 border-blue-200"
+                rows={2}
+                value={invNote}
+                onChange={(e) => setInvNote(e.target.value)}
+              />
+              <div className="space-y-3">
+                {invItems.map((item, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm"
+                  >
+                    <div className="flex gap-3">
+                      {item.imgUrl ? (
+                        <img
+                          src={item.imgUrl}
+                          alt={item.name}
+                          className="w-24 h-24 rounded-xl object-cover shrink-0 border-2 border-gray-100"
+                        />
+                      ) : (
+                        <div
+                          className="w-24 h-24 rounded-xl flex items-center justify-center shrink-0 text-4xl"
+                          style={{ backgroundColor: `${brand.primaryColor}10` }}
+                        >
+                          📦
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <input
+                          className="input-field text-sm font-bold py-1"
+                          value={item.name}
+                          onChange={(e) => {
+                            const u = [...invItems];
+                            u[i].name = e.target.value;
+                            setInvItems(u);
+                          }}
+                        />
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-[9px] text-gray-400">
+                              Qty
+                            </label>
+                            <input
+                              type="number"
+                              className="input-field text-xs py-1"
+                              value={item.qty}
+                              onChange={(e) => {
+                                const u = [...invItems];
+                                u[i].qty = Number(e.target.value);
+                                setInvItems(u);
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-[9px] text-gray-400">
+                              Price (₦)
+                            </label>
+                            <input
+                              type="number"
+                              className="input-field text-xs py-1"
+                              value={item.price}
+                              onChange={(e) => {
+                                const u = [...invItems];
+                                u[i].price = Number(e.target.value);
+                                setInvItems(u);
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {item.benefits && (
+                      <div className="mt-2 bg-green-50 rounded-lg p-2 text-[10px] text-green-700">
+                        ✨ {item.benefits}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm font-bold">
+                  <span>Subtotal</span>
+                  <span>{formatNaira(invSubtotal)}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span>Delivery</span>
+                  <input
+                    type="number"
+                    className="input-field w-28 text-xs text-right py-1"
+                    value={invDelivery}
+                    onChange={(e) => setInvDelivery(Number(e.target.value))}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span>Paid</span>
+                  <input
+                    type="number"
+                    className="input-field w-28 text-xs text-right py-1"
+                    value={invPaid}
+                    onChange={(e) => setInvPaid(Number(e.target.value))}
+                  />
+                </div>
+                <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
+                  <span className="text-red-600">Balance</span>
+                  <span className="text-red-600">
+                    {formatNaira(invBalance)}
+                  </span>
+                </div>
+              </div>
+              {/* Bank Details */}
+              {brand.accountNumber && (
+                <div className="bg-green-50 rounded-lg p-3 text-xs text-green-800 space-y-1">
+                  <p className="font-semibold">💳 Payment Details</p>
+                  <p>
+                    {brand.bankName} — {brand.accountNumber}
+                  </p>
+                  <p>{brand.accountName}</p>
+                </div>
+              )}
+              {/* Phone */}
+              {brand.phoneNumber && (
+                <p className="text-center text-xs text-gray-500">
+                  📞 {brand.phoneNumber}
+                </p>
+              )}
+              {/* Thank You */}
+              {brand.thankYouMessage && (
+                <p
+                  className="text-center text-sm font-semibold"
+                  style={{ color: brand.primaryColor }}
+                >
+                  {brand.thankYouMessage}
+                </p>
+              )}
+            </div>
+            <div className="p-5 border-t space-y-2">
+              <button
+                onClick={sendInvoiceToWhatsApp}
+                className="btn-primary w-full py-3 bg-green-600 flex items-center justify-center gap-2 text-sm font-semibold"
+              >
+                <MessageCircle size={18} /> Send Invoice to WhatsApp
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${brand.name} Invoice #${invoiceOrder.serialNumber}\n${invItems.map((i) => `${i.name} x${i.qty} = ${formatNaira(i.price)}${i.benefits ? ` (${i.benefits})` : ""}`).join("\n")}\nSubtotal: ${formatNaira(invSubtotal)}\nDelivery: ${formatNaira(invDelivery)}\nPaid: ${formatNaira(invPaid)}\nBalance: ${formatNaira(invBalance)}${brand.accountNumber ? `\n\n💳 ${brand.bankName} - ${brand.accountNumber}\n${brand.accountName}` : ""}${brand.phoneNumber ? `\n📞 ${brand.phoneNumber}` : ""}${brand.thankYouMessage ? `\n\n${brand.thankYouMessage}` : ""}`,
+                    );
+                    alert("Copied!");
+                  }}
+                  className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1"
+                >
+                  <Copy size={12} /> Copy
+                </button>
+                <button
+                  onClick={sendInvoiceToWhatsApp}
+                  className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1"
+                >
+                  <FileText size={12} /> Print
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
