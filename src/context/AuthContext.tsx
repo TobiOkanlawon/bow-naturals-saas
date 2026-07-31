@@ -35,7 +35,7 @@ type AuthContextType = {
     password: string,
     name: string,
     companyName: string,
-    plan: string | number
+    plan: string | number,
   ) => Promise<RegisterResult>;
   logout: () => Promise<void>;
 };
@@ -54,7 +54,7 @@ const AuthContext = createContext<AuthContextType>({
 async function mapSessionToUser(
   session: NonNullable<
     Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]
-  >
+  >,
 ): Promise<User> {
   const supabaseUser = session.user;
 
@@ -73,14 +73,15 @@ async function mapSessionToUser(
 
   if (!rawProfile) {
     console.error(
-      "❌ [DEBUG] Simple profile query returned null. This is 100% an RLS issue on the 'profile' table!"
+      "❌ [DEBUG] Simple profile query returned null. This is 100% an RLS issue on the 'profile' table!",
     );
   }
 
   // --- TEST B: Fetch profile WITH company join ---
   const { data: profile, error: profileError } = await supabase
     .from("profile")
-    .select(`
+    .select(
+      `
       role,
       company_id,
       full_name,
@@ -88,7 +89,8 @@ async function mapSessionToUser(
         name,
         plan_id
       )
-    `)
+    `,
+    )
     .eq("user_id", supabaseUser.id)
     .maybeSingle();
 
@@ -101,7 +103,7 @@ async function mapSessionToUser(
 
   if (!profile) {
     throw new Error(
-      `No profile found for user_id: ${supabaseUser.id}. Check RLS policies on 'profile' and 'company'.`
+      `No profile found for user_id: ${supabaseUser.id}. Check RLS policies on 'profile' and 'company'.`,
     );
   }
 
@@ -184,10 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (
-    email: string,
-    password: string
-  ): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
 
@@ -215,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     name: string,
     companyName: string,
-    plan: string | number
+    plan: string | number,
   ): Promise<RegisterResult> => {
     try {
       const { data, error } = await supabase.functions.invoke("create-user", {

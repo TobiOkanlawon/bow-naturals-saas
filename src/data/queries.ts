@@ -6,8 +6,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { CompanyDataStore, dataStore } from "@/data/store";
-import { supabase } from "@/config/supabase";
+import { dataStore } from "@/data/store";
 
 /* ---------- Shared utility types ---------- */
 type AsyncData<T extends (...args: any[]) => Promise<any>> = Awaited<
@@ -157,7 +156,6 @@ export function createMutationHook<TData, TVariables>(
   options?: UseMutationOptions<TData, Error, TVariables>,
 ) {
   return () => {
-
     return useMutation({
       mutationKey: [mutationKey],
       mutationFn,
@@ -378,11 +376,25 @@ export const useOrder = (companyId: string, id: string) =>
     enabled: !!companyId && !!id,
   });
 
-export const useCreateOrder = createMutationHook(
-  "orders",
-  ({ companyId, data }: any) =>
-    dataStore.createOrder(companyId, data),
-);
+export const useCreateOrder = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: Omit<Order, "id" | "companyId">;
+    }) => dataStore.createOrder(companyId, data),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["orders"],
+      });
+    },
+  });
+};
 
 export const useUpdateOrder = updateMutationHook("orders", (c, id, d) =>
   dataStore.updateOrder(c, id, d),
