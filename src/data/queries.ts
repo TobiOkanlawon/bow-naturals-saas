@@ -334,16 +334,26 @@ export const useLogisticsCompany = (companyId: string, id: string) =>
     enabled: !!companyId && !!id,
   });
 
-export const useCreateLogistics = createMutationHook(
-  "logistics",
-  ({
-    companyId,
-    data,
-  }: {
-    companyId: string;
-    data: Omit<LogisticsCompany, "id" | "companyId">;
-  }) => dataStore.createLogistics(companyId, data),
-);
+export const useCreateLogistics = () => {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: Omit<LogisticsCompany, "id" | "companyId">;
+    }) => {
+      return dataStore.createLogistics(companyId, data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["logistics"],
+      });
+    },
+  });
+};
 
 export const useUpdateLogistics = createMutationHook(
   "logistics",
