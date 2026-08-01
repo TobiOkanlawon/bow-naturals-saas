@@ -1372,13 +1372,61 @@ export default function CRM() {
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     State
                   </label>
-                  <input
+
+                  <select
                     className="input-field"
                     value={form.state || ""}
                     onChange={(e) =>
                       setForm({ ...form, state: e.target.value })
                     }
-                  />
+                  >
+                    <option value="">Select a state</option>
+
+                    {[
+                      "Abia",
+                      "Adamawa",
+                      "Akwa Ibom",
+                      "Anambra",
+                      "Bauchi",
+                      "Bayelsa",
+                      "Benue",
+                      "Borno",
+                      "Cross River",
+                      "Delta",
+                      "Ebonyi",
+                      "Edo",
+                      "Ekiti",
+                      "Enugu",
+                      "Federal Capital Territory",
+                      "Gombe",
+                      "Imo",
+                      "Jigawa",
+                      "Kaduna",
+                      "Kano",
+                      "Katsina",
+                      "Kebbi",
+                      "Kogi",
+                      "Kwara",
+                      "Lagos",
+                      "Nasarawa",
+                      "Niger",
+                      "Ogun",
+                      "Ondo",
+                      "Osun",
+                      "Oyo",
+                      "Plateau",
+                      "Rivers",
+                      "Sokoto",
+                      "Taraba",
+                      "Yobe",
+                      "Zamfara",
+                      "Other",
+                    ].map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
