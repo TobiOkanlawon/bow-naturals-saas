@@ -44,6 +44,7 @@ import {
   useUpdateOrder,
   useUpdateProduct,
 } from "@/data/queries";
+import { toast } from "react-toastify";
 
 const dealTypeLabels: Record<string, string> = {
   retail: "Retail",
@@ -428,7 +429,10 @@ export default function CRM() {
   });
 
   const save = async () => {
-    if (!form.customerName || !form.phoneNumber || !orderItems.length) return;
+    if (!form.customerName || !form.phoneNumber || !orderItems.length) {
+      toast.error("form not filled properly");
+    }
+
     const { totalAmount, totalCost } = calculateTotals();
     const amountPaid = form.amountPaid || 0;
 

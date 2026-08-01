@@ -355,27 +355,17 @@ export const useCreateLogistics = () => {
   });
 };
 
-export const useUpdateLogistics = createMutationHook(
-  "logistics",
-  ({
-    companyId,
-    id,
-    data,
-  }: {
-    companyId: string;
-    id: string;
-    data: Partial<LogisticsCompany>;
-  }) => {
-    const queryClient = useQueryClient();
+export const useUpdateLogistics = () => {
+  const queryClient = useQueryClient();
 
-    return useMutation({
-      mutationFn: () => dataStore.updateLogistics(companyId, id, data),
-      onSuccess: () => queryClient.invalidateQueries({
-	queryKey: ["logistics"],
-      })
-    })
-  }
-);
+  return useMutation({
+    mutationFn: ({companyId, id, data}: {companyId: string, id: string, data: Partial<LogisticsCompany>}) => dataStore.updateLogistics(companyId, id, data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["logistics"],
+      }),
+  });
+};
 
 export const useDeleteLogistics = deleteMutationHook("logistics", (c, id) =>
   dataStore.deleteLogistics(c, id),

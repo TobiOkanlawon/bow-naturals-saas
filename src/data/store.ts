@@ -249,7 +249,7 @@ export const OrderMapper = {
       whatsapp_number: data.whatsappNumber,
       notes: data.notes,
       order_date: data.orderDate,
-      expected_delivery_date: data.expectedDeliveryDate,
+      expected_delivery_date: !!data.expectedDeliveryDate ? data.expectedDeliveryDate : null,
       actual_delivery_date: data.actualDeliveryDate,
       logistics_company_id: data.logisticsCompanyId,
       logistics_location: data.logisticsLocation,
