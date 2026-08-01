@@ -365,7 +365,16 @@ export const useUpdateLogistics = createMutationHook(
     companyId: string;
     id: string;
     data: Partial<LogisticsCompany>;
-  }) => dataStore.updateLogistics(companyId, id, data),
+  }) => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+      mutationFn: () => dataStore.updateLogistics(companyId, id, data),
+      onSuccess: () => queryClient.invalidateQueries({
+	queryKey: ["logistics"],
+      })
+    })
+  }
 );
 
 export const useDeleteLogistics = deleteMutationHook("logistics", (c, id) =>
