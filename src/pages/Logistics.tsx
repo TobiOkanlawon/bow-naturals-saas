@@ -36,6 +36,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { toast } from "react-toastify";
 
 export default function Logistics() {
   const { user } = useAuth();
@@ -187,18 +188,29 @@ export default function Logistics() {
   };
 
   const saveInventory = async () => {
-    if (!selectedLocation || !companyId) return;
+    if (!selectedLocation || !companyId) {
+      toast.error("you need to selectt a valid location");
+      return;
+    }
 
-    const valid = inventoryForm.filter((i) => i.quantity > 0 || i.minStock > 0);
+    if (
+      inventoryForm.some(
+        (v) => v.minStock < 0 || v.quantity < 0 || !v.productId,
+      )
+    ) {
+      toast.error("inputted data does not seem correct.");
+      return;
+    }
+
     const updatedLogistics = logistics.map((l) =>
-      l.id === selectedLocation.id ? { ...l, inventory: valid } : l,
+      l.id === selectedLocation.id ? { ...l, inventory: inventoryForm } : l,
     );
 
     // Save updated inventory for logistics company
     await updateLogisticsMutation.mutateAsync({
       companyId,
       id: selectedLocation.id,
-      data: { inventory: valid },
+      data: { inventory: inventoryForm },
     });
 
     // Sync product stock across all locations
