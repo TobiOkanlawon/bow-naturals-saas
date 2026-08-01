@@ -316,6 +316,27 @@ export const useUpdateProduct = updateMutationHook("products", (c, id, d) =>
   dataStore.updateProduct(c, id, d),
 );
 
+// export const useUpdateInventory = updateMutationHook('logistics', (logisticsCompanyId, data) => dataStore.updateLogisticsInventory(logisticsCompanyId, data))
+
+export const useUpdateInventory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ["update-inventory"],
+    mutationFn: ({
+      logisticsCompanyId,
+      data,
+    }: {
+      logisticsCompanyId: string;
+      data: LogisticsInventoryItem[];
+    }) => {
+      return dataStore.updateLogisticsInventory(logisticsCompanyId, data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["logistics"] });
+    },
+  });
+};
+
 export const useDeleteProduct = deleteMutationHook("products", (c, id) =>
   dataStore.deleteProduct(c, id),
 );
@@ -359,7 +380,15 @@ export const useUpdateLogistics = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({companyId, id, data}: {companyId: string, id: string, data: Partial<LogisticsCompany>}) => dataStore.updateLogistics(companyId, id, data),
+    mutationFn: ({
+      companyId,
+      id,
+      data,
+    }: {
+      companyId: string;
+      id: string;
+      data: Partial<LogisticsCompany>;
+    }) => dataStore.updateLogistics(companyId, id, data),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ["logistics"],
@@ -370,6 +399,24 @@ export const useUpdateLogistics = () => {
 export const useDeleteLogistics = deleteMutationHook("logistics", (c, id) =>
   dataStore.deleteLogistics(c, id),
 );
+
+export const updateLogisticsInventory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      data,
+    }: {
+      companyId: string;
+      data: LogisticsInventoryItem[];
+    }) => dataStore.updateLogisticsInventory(companyId, data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["logistics"],
+      }),
+  });
+};
 
 export const useOrders = (companyId: string) =>
   useQuery({

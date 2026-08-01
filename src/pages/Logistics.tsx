@@ -11,6 +11,8 @@ import {
   useUpdateLogistics,
   useDeleteLogistics,
   useUpdateProduct,
+  updateLogisticsInventory,
+  useUpdateInventory,
 } from "@/data/queries";
 import {
   Plus,
@@ -64,6 +66,7 @@ export default function Logistics() {
   const updateLogisticsMutation = useUpdateLogistics();
   const deleteLogisticsMutation = useDeleteLogistics();
   const updateProductMutation = useUpdateProduct();
+  const updateInventoryMutation = useUpdateInventory();
 
   // Local UI States
   const [search, setSearch] = useState("");
@@ -207,10 +210,9 @@ export default function Logistics() {
     );
 
     // Save updated inventory for logistics company
-    await updateLogisticsMutation.mutateAsync({
-      companyId,
-      id: selectedLocation.id,
-      data: { inventory: inventoryForm },
+    await updateInventoryMutation.mutateAsync({
+      logisticsCompanyId: selectedLocation.id,
+      data: inventoryForm,
     });
 
     // Sync product stock across all locations

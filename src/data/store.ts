@@ -1,5 +1,6 @@
 // Centralized data store - uses pluggable storage adapter and CRUD repositories
 import { supabase } from "@/config/supabase";
+import Logistics from "@/pages/Logistics";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 // ==========================================
@@ -27,10 +28,15 @@ export const LogisticsInventoryMapper = {
     };
   },
 
-  toUpdate(data: LogisticsInventoryItem): TablesUpdate<"logistics_inventory"> {
+  toUpdate(
+    logisticsCompanyId: string,
+    data: LogisticsInventoryItem,
+  ): TablesUpdate<"logistics_inventory"> {
     return {
+      logistics_company_id: logisticsCompanyId,
       quantity: data.quantity,
       min_stock: data.minStock,
+      product_id: data.productId,
     };
   },
 };
@@ -249,7 +255,9 @@ export const OrderMapper = {
       whatsapp_number: data.whatsappNumber,
       notes: data.notes,
       order_date: data.orderDate,
-      expected_delivery_date: !!data.expectedDeliveryDate ? data.expectedDeliveryDate : null,
+      expected_delivery_date: !!data.expectedDeliveryDate
+        ? data.expectedDeliveryDate
+        : null,
       actual_delivery_date: data.actualDeliveryDate,
       logistics_company_id: data.logisticsCompanyId,
       logistics_location: data.logisticsLocation,
@@ -831,7 +839,8 @@ export class CompanyDataStore {
     companyId: string,
     data: Omit<LogisticsCompany, "id" | "companyId">,
   ): Promise<LogisticsCompany> {
-    const { data: result, error } = await this.supabase
+    /* will both create an agent(logistics) and their inventory, if given */
+    const { data: agent, error } = await this.supabase
       .from("logistics_company")
       .insert(LogisticsMapper.toInsert(data, companyId))
       .select()
@@ -841,7 +850,31 @@ export class CompanyDataStore {
       throw error;
     }
 
-    return LogisticsMapper.toDomain(result);
+    const agentInDomain = LogisticsMapper.toDomain(agent);
+
+    if (!data.inventory) {
+      return agentInDomain;
+    }
+
+    const inventory = [];
+
+    for (let i of data.inventory) {
+      const { data: j, error: e } = await this.supabase
+        .from("logistics_inventory")
+        .insert(LogisticsInventoryMapper.toInsert(agentInDomain.id, i))
+        .select()
+        .single();
+
+      if (e) {
+        throw error;
+      }
+      inventory.push(j);
+    }
+
+    return {
+      ...agentInDomain,
+      inventory: inventory,
+    };
   }
 
   async getLogistics(
@@ -859,7 +892,25 @@ export class CompanyDataStore {
       throw error;
     }
 
-    return data ? LogisticsMapper.toDomain(data) : null;
+    if (!data) {
+      return null;
+    }
+
+    const { data: inventory, error: e } = await this.supabase
+      .from("logistics_inventory")
+      .select()
+      .eq("logistics_company_id", data.id);
+
+    if (e) {
+      throw error;
+    }
+
+    const d = {
+      ...LogisticsMapper.toDomain(data),
+      inventory: inventory.map((i) => LogisticsInventoryMapper.toDomain(i)),
+    };
+
+    return d;
   }
 
   async getAllLogistics(companyId: string): Promise<LogisticsCompany[]> {
@@ -902,6 +953,10 @@ export class CompanyDataStore {
     id: string,
     data: Partial<LogisticsCompany>,
   ): Promise<LogisticsCompany | null> {
+
+
+    console.log("this is what's coming in", data);
+    
     const { data: result, error } = await this.supabase
       .from("logistics_company")
       .update(LogisticsMapper.toUpdate(data))
@@ -914,7 +969,32 @@ export class CompanyDataStore {
       throw error;
     }
 
-    return result ? LogisticsMapper.toDomain(result) : null;
+    if (!data.inventory) {
+      return result ? LogisticsMapper.toDomain(result) : null;
+    }
+
+    const inventory = [];
+
+    for (let i of data.inventory) {
+      // we are forcing a create right now, but I don't necessary know if
+      // the user will be creating or updating here
+      const { data: d, error: e } = await this.supabase
+        .from("logistics_inventory")
+        .insert(LogisticsInventoryMapper.toInsert(result.id, i))
+        .eq("company_id", companyId)
+        .select();
+
+      if (e) {
+        throw error;
+      }
+
+      inventory.push(LogisticsInventoryMapper.toDomain(d));
+    }
+
+    return {
+      ...LogisticsMapper.toDomain(result),
+      inventory,
+    };
   }
 
   async deleteLogistics(companyId: string, id: string): Promise<boolean> {
@@ -1111,8 +1191,11 @@ export class CompanyDataStore {
 
   async updateLogisticsInventory(
     logisticsCompanyId: string,
-    inventory: LogisticsInventoryItem[],
+    data: LogisticsInventoryItem[],
   ): Promise<LogisticsInventoryItem[]> {
+
+    /* okay, so to avoid the problem where updating turns to duplicates, we delete first then re-create*/
+    
     const { error: deleteError } = await this.supabase
       .from("logistics_inventory")
       .delete()
@@ -1120,14 +1203,14 @@ export class CompanyDataStore {
 
     if (deleteError) throw deleteError;
 
-    if (inventory.length === 0) {
+    if (data.length === 0) {
       return [];
     }
 
-    const { data, error } = await this.supabase
+    const { data: d, error } = await this.supabase
       .from("logistics_inventory")
       .insert(
-        inventory.map((i) =>
+        data.map((i) =>
           LogisticsInventoryMapper.toInsert(logisticsCompanyId, i),
         ),
       )
@@ -1135,7 +1218,7 @@ export class CompanyDataStore {
 
     if (error) throw error;
 
-    return data.map(LogisticsInventoryMapper.toDomain);
+    return d.map(LogisticsInventoryMapper.toDomain);
   }
 
   async upsertLogisticsInventory(
