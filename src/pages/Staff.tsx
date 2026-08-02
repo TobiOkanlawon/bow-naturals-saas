@@ -1,19 +1,18 @@
-import { useState, useMemo } from 'react';
-import { useBrand } from '../context/BrandContext';
-import { useCompany } from '../context/CompanyContext';
+import { useState, useMemo } from "react";
+import { useBrand } from "../context/BrandContext";
 import {
   type StaffMember,
   type DateRange,
   formatNaira,
   getDateRangeFilter,
-} from '../data/store';
+} from "../data/store";
 import {
   useStaff,
   useOrders,
   useCreateStaff,
   useUpdateStaff,
   useDeleteStaff,
-} from '@/data/queries'; // Replace with your actual React Query hooks path
+} from "@/data/queries"; // Replace with your actual React Query hooks path
 import {
   Plus,
   Search,
@@ -29,7 +28,7 @@ import {
   XCircle,
   Calendar,
   Package,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -38,12 +37,17 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-} from 'recharts';
+} from "recharts";
+
+import { useAuth } from "@/context/AuthContext";
 
 export default function Staff() {
   const { brand } = useBrand();
-  const { getCurrentCompanyId } = useCompany();
-  const companyId = getCurrentCompanyId();
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const companyId = user?.companyId as string;
 
   // React Query Data Hooks
   const {
@@ -63,19 +67,23 @@ export default function Staff() {
   const updateStaffMutation = useUpdateStaff();
   const deleteStaffMutation = useDeleteStaff();
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [form, setForm] = useState<Partial<StaffMember>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange>('infinite');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange>("infinite");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
 
   // Filter orders by date range
   const orders = useMemo(() => {
-    if (dateRange === 'infinite') return allOrders;
-    const { start, end } = getDateRangeFilter(dateRange, customStart, customEnd);
+    if (dateRange === "infinite") return allOrders;
+    const { start, end } = getDateRangeFilter(
+      dateRange,
+      customStart,
+      customEnd,
+    );
     return allOrders.filter((o) => {
       const d = new Date(o.orderDate);
       return d >= start && d <= end;
@@ -83,27 +91,29 @@ export default function Staff() {
   }, [allOrders, dateRange, customStart, customEnd]);
 
   const staffMetrics = useMemo(() => {
+    console.log("the staff from staffMetrics: ", staff);
+
     return staff.map((s) => {
-      const my = orders.filter((o) => o.createdBy === s.name);
-      const delivered = my.filter((o) => o.orderStatus === 'delivered');
+      const my = orders.filter((o) => o.createdBy === s.fullName);
+      const delivered = my.filter((o) => o.orderStatus === "delivered");
       const totalProductsDelivered = delivered.reduce(
         (sum, o) => sum + o.items.reduce((s2, i) => s2 + i.quantity, 0),
-        0
+        0,
       );
       return {
         id: s.id,
         total: my.length,
         delivered: delivered.length,
-        pending: my.filter((o) => o.orderStatus === 'pending').length,
+        pending: my.filter((o) => o.orderStatus === "pending").length,
         failed: my.filter(
-          (o) => o.orderStatus === 'rejected' || o.orderStatus === 'failed'
+          (o) => o.orderStatus === "rejected" || o.orderStatus === "failed",
         ).length,
         revenue: delivered.reduce((sum, o) => sum + o.amountPaid, 0),
         profit: delivered.reduce((sum, o) => sum + o.grossProfit, 0),
         conversion: my.length > 0 ? (delivered.length / my.length) * 100 : 0,
         itemsSold: my.reduce(
           (sum, o) => sum + o.items.reduce((s2, i) => s2 + i.quantity, 0),
-          0
+          0,
         ),
         productsDelivered: totalProductsDelivered,
       };
@@ -115,7 +125,7 @@ export default function Staff() {
   const chartData = staff.map((s) => {
     const m = getM(s.id);
     return {
-      name: s.name.split(' ')[0],
+      name: s.fullName.split(" ")[0],
       orders: m?.total || 0,
       delivered: m?.delivered || 0,
       revenue: Math.round((m?.revenue || 0) / 1000),
@@ -124,16 +134,16 @@ export default function Staff() {
 
   const filtered = staff.filter(
     (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.fullName.toLowerCase().includes(search.toLowerCase()) ||
       s.department.toLowerCase().includes(search.toLowerCase()) ||
-      s.role.toLowerCase().includes(search.toLowerCase())
+      s.role.toLowerCase().includes(search.toLowerCase()),
   );
 
   const openAdd = () => {
     setEditing(null);
     setForm({
-      status: 'active',
-      joinDate: new Date().toISOString().split('T')[0],
+      status: "active",
+      joinDate: new Date().toISOString().split("T")[0],
       permissions: {
         canAddEditInventory: false,
         canAddLogistics: false,
@@ -150,7 +160,13 @@ export default function Staff() {
   };
 
   const save = async () => {
-    if (!form.name || !form.email || !form.role || !form.department || !companyId)
+    if (
+      !form.name ||
+      !form.email ||
+      !form.role ||
+      !form.department ||
+      !companyId
+    )
       return;
 
     if (editing) {
@@ -163,14 +179,14 @@ export default function Staff() {
       await createStaffMutation.mutateAsync({
         companyId,
         data: {
-          name: form.name || '',
-          email: form.email || '',
-          password: form.password || 'staff123',
-          role: form.role || '',
-          department: form.department || '',
-          status: form.status || 'active',
-          joinDate: form.joinDate || '',
-          phone: form.phone || '',
+          fullName: form.name || "",
+          email: form.email || "",
+          password: form.password || "staff123",
+          role: form.role || "",
+          department: form.department || "",
+          status: form.status || "active",
+          joinDate: form.joinDate || "",
+          phone: form.phone || "",
           salary: form.salary || 0,
           permissions: form.permissions || {
             canAddEditInventory: false,
@@ -185,13 +201,13 @@ export default function Staff() {
 
   const remove = async (id: string) => {
     if (!companyId) return;
-    if (!confirm('Remove this team member?')) return;
+    if (!confirm("Remove this team member?")) return;
     await deleteStaffMutation.mutateAsync({ companyId, id });
   };
 
   const togglePermission = async (
     id: string,
-    perm: 'canAddEditInventory' | 'canAddLogistics' | 'canMarkDelivered'
+    perm: "canAddEditInventory" | "canAddLogistics" | "canMarkDelivered",
   ) => {
     if (!companyId) return;
     const member = staff.find((s) => s.id === id);
@@ -210,11 +226,11 @@ export default function Staff() {
   };
 
   const rangeLabels: { value: DateRange; label: string }[] = [
-    { value: 'weekly', label: 'Week' },
-    { value: 'monthly', label: 'Month' },
-    { value: 'yearly', label: 'Year' },
-    { value: 'infinite', label: 'All Time' },
-    { value: 'custom', label: 'Custom' },
+    { value: "weekly", label: "Week" },
+    { value: "monthly", label: "Month" },
+    { value: "yearly", label: "Year" },
+    { value: "infinite", label: "All Time" },
+    { value: "custom", label: "Custom" },
   ];
 
   // Summary totals
@@ -224,9 +240,12 @@ export default function Staff() {
       delivered: staffMetrics.reduce((s, m) => s + m.delivered, 0),
       revenue: staffMetrics.reduce((s, m) => s + m.revenue, 0),
       profit: staffMetrics.reduce((s, m) => s + m.profit, 0),
-      productsDelivered: staffMetrics.reduce((s, m) => s + m.productsDelivered, 0),
+      productsDelivered: staffMetrics.reduce(
+        (s, m) => s + m.productsDelivered,
+        0,
+      ),
     }),
-    [staffMetrics]
+    [staffMetrics],
   );
 
   if (loadingStaff || loadingOrders) {
@@ -258,17 +277,19 @@ export default function Staff() {
             onClick={() => setDateRange(r.value)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               dateRange === r.value
-                ? 'text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? "text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
             style={
-              dateRange === r.value ? { backgroundColor: brand.primaryColor } : {}
+              dateRange === r.value
+                ? { backgroundColor: brand.primaryColor }
+                : {}
             }
           >
             {r.label}
           </button>
         ))}
-        {dateRange === 'custom' && (
+        {dateRange === "custom" && (
           <div className="flex items-center gap-2 ml-1">
             <input
               type="date"
@@ -332,16 +353,16 @@ export default function Staff() {
               dataKey="name"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: '#6B7280' }}
+              tick={{ fontSize: 11, fill: "#6B7280" }}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: '#9CA3AF' }}
+              tick={{ fontSize: 11, fill: "#9CA3AF" }}
             />
             <Tooltip
               formatter={(v: any, name: any) => [
-                name === 'revenue' ? `₦${v}k` : v,
+                name === "revenue" ? `₦${v}k` : v,
                 name,
               ]}
             />
@@ -400,19 +421,17 @@ export default function Staff() {
             <div key={member.id} className="card overflow-hidden">
               <div
                 className="p-4 flex items-center gap-4 cursor-pointer"
-                onClick={() =>
-                  setExpandedId(isExpanded ? null : member.id)
-                }
+                onClick={() => setExpandedId(isExpanded ? null : member.id)}
               >
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
                   style={{ backgroundColor: brand.primaryColor }}
                 >
-                  {member.name.charAt(0)}
+                  {member.fullName.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900">
-                    {member.name}
+                    {member.fullName}
                   </p>
                   <p className="text-xs text-gray-500">
                     {member.role} • {member.department}
@@ -447,9 +466,9 @@ export default function Staff() {
                 <div className="flex items-center gap-1 shrink-0">
                   <span
                     className={`badge text-[10px] ${
-                      member.status === 'active'
-                        ? 'bg-green-50 text-green-700'
-                        : 'bg-gray-100 text-gray-600'
+                      member.status === "active"
+                        ? "bg-green-50 text-green-700"
+                        : "bg-gray-100 text-gray-600"
                     }`}
                   >
                     {member.status}
@@ -507,7 +526,9 @@ export default function Staff() {
                       <p className="text-[9px] text-gray-500">Pending</p>
                     </div>
                     <div className="bg-red-50 rounded-lg p-2.5 text-center">
-                      <p className="text-lg font-bold text-red-600">{m.failed}</p>
+                      <p className="text-lg font-bold text-red-600">
+                        {m.failed}
+                      </p>
                       <p className="text-[9px] text-gray-500">
                         <XCircle size={9} className="inline" /> Failed
                       </p>
@@ -541,51 +562,53 @@ export default function Staff() {
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                     <button
                       onClick={() =>
-                        togglePermission(member.id, 'canAddEditInventory')
+                        togglePermission(member.id, "canAddEditInventory")
                       }
                       className={`p-1.5 rounded-lg text-xs flex items-center gap-1 ${
                         member.permissions.canAddEditInventory
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-gray-100 text-gray-500'
+                          ? "bg-green-50 text-green-700"
+                          : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {member.permissions.canAddEditInventory ? (
                         <Shield size={12} />
                       ) : (
-                        <ShieldOff size={12} />)} Inventory
+                        <ShieldOff size={12} />
+                      )}{" "}
+                      Inventory
                     </button>
                     <button
                       onClick={() =>
-                        togglePermission(member.id, 'canAddLogistics')
+                        togglePermission(member.id, "canAddLogistics")
                       }
                       className={`p-1.5 rounded-lg text-xs flex items-center gap-1 ${
                         member.permissions.canAddLogistics
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-gray-100 text-gray-500'
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {member.permissions.canAddLogistics ? (
                         <Shield size={12} />
                       ) : (
                         <ShieldOff size={12} />
-                      )}{' '}
+                      )}{" "}
                       Agent
                     </button>
                     <button
                       onClick={() =>
-                        togglePermission(member.id, 'canMarkDelivered')
+                        togglePermission(member.id, "canMarkDelivered")
                       }
                       className={`p-1.5 rounded-lg text-xs flex items-center gap-1 ${
                         member.permissions.canMarkDelivered
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-gray-100 text-gray-500'
+                          ? "bg-green-50 text-green-700"
+                          : "bg-gray-100 text-gray-500"
                       }`}
                     >
                       {member.permissions.canMarkDelivered ? (
                         <Shield size={12} />
                       ) : (
                         <ShieldOff size={12} />
-                      )}{' '}
+                      )}{" "}
                       Delivered
                     </button>
                   </div>
@@ -608,7 +631,7 @@ export default function Staff() {
           >
             <div className="flex items-center justify-between p-5 border-b">
               <h3 className="font-semibold text-gray-900">
-                {editing ? 'Edit Member' : 'Add Member'}
+                {editing ? "Edit Member" : "Add Member"}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -624,7 +647,7 @@ export default function Staff() {
                 </label>
                 <input
                   className="input-field"
-                  value={form.name || ''}
+                  value={form.name || ""}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
@@ -635,7 +658,7 @@ export default function Staff() {
                 <input
                   className="input-field"
                   type="email"
-                  value={form.email || ''}
+                  value={form.email || ""}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </div>
@@ -646,8 +669,10 @@ export default function Staff() {
                 <input
                   className="input-field"
                   type="text"
-                  value={form.password || ''}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  value={form.password || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -657,7 +682,7 @@ export default function Staff() {
                   </label>
                   <input
                     className="input-field"
-                    value={form.role || ''}
+                    value={form.role || ""}
                     onChange={(e) => setForm({ ...form, role: e.target.value })}
                   />
                 </div>
@@ -667,7 +692,7 @@ export default function Staff() {
                   </label>
                   <input
                     className="input-field"
-                    value={form.department || ''}
+                    value={form.department || ""}
                     onChange={(e) =>
                       setForm({ ...form, department: e.target.value })
                     }
@@ -681,8 +706,10 @@ export default function Staff() {
                   </label>
                   <input
                     className="input-field"
-                    value={form.phone || ''}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    value={form.phone || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, phone: e.target.value })
+                    }
                   />
                 </div>
                 <div>
@@ -692,7 +719,7 @@ export default function Staff() {
                   <input
                     className="input-field"
                     type="number"
-                    value={form.salary || ''}
+                    value={form.salary || ""}
                     onChange={(e) =>
                       setForm({ ...form, salary: Number(e.target.value) })
                     }
@@ -709,7 +736,7 @@ export default function Staff() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      status: e.target.value as 'active' | 'inactive',
+                      status: e.target.value as "active" | "inactive",
                     })
                   }
                 >
@@ -725,9 +752,7 @@ export default function Staff() {
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
-                      checked={
-                        form.permissions?.canAddEditInventory || false
-                      }
+                      checked={form.permissions?.canAddEditInventory || false}
                       onChange={(e) =>
                         setForm({
                           ...form,
@@ -738,7 +763,7 @@ export default function Staff() {
                         })
                       }
                       className="rounded"
-                    />{' '}
+                    />{" "}
                     Can add/edit inventory
                   </label>
                   <label className="flex items-center gap-2 text-sm">
@@ -755,7 +780,7 @@ export default function Staff() {
                         })
                       }
                       className="rounded"
-                    />{' '}
+                    />{" "}
                     Can add agents
                   </label>
                   <label className="flex items-center gap-2 text-sm">
@@ -772,7 +797,7 @@ export default function Staff() {
                         })
                       }
                       className="rounded"
-                    />{' '}
+                    />{" "}
                     Can mark delivered
                   </label>
                 </div>
@@ -793,7 +818,7 @@ export default function Staff() {
                 className="btn-primary flex-1 disabled:opacity-50"
                 style={{ backgroundColor: brand.primaryColor }}
               >
-                {editing ? 'Update' : 'Add'}
+                {editing ? "Update" : "Add"}
               </button>
             </div>
           </div>

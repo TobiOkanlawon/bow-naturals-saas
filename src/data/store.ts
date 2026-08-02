@@ -2,10 +2,29 @@
 import { supabase } from "@/config/supabase";
 import Logistics from "@/pages/Logistics";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { CreateStaffData } from "./queries";
 
 // ==========================================
 // DATA TRANSFORMERS
 // ==========================================
+
+export interface CreateStaffRequest {
+  companyId: string;
+
+  fullName: string;
+  email: string;
+  password: string;
+
+  role: UserRole;
+  status: "active";
+
+  department?: string;
+  phone?: string;
+  salary?: number;
+  joinDate?: string; // ISO date string (YYYY-MM-DD)
+
+  permissions?: Permissions;
+}
 
 export const LogisticsInventoryMapper = {
   toDomain(row: Tables<"logistics_inventory">): LogisticsInventoryItem {
@@ -421,7 +440,7 @@ export const ExpenseMapper = {
  * Uses repositories to isolate data by companyId
  */
 export class CompanyDataStore {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient) { }
 
   private async create<TDomain, TInsert>(
     table: keyof Database["public"]["Tables"],
@@ -507,13 +526,20 @@ export class CompanyDataStore {
   // ------------------------------------------------------------------
   async createStaff(
     companyId: string,
-    data: Omit<StaffMember, "id" | "createdAt">,
+    data: CreateStaffRequest,
   ): Promise<StaffMember> {
-    return this.create(
-      "profile",
-      StaffMapper.toInsert(data, companyId),
-      StaffMapper.toDomain,
-    );
+    const { data: d, error: e } = await this.supabase.functions.invoke("create-staff", {
+      body: {
+        ...data,
+        companyId,
+      }
+    })
+
+    if (e) {
+      throw new Error("failed to create staff")
+    }
+
+    return d;
   }
 
   async getStaff(companyId: string, id: string): Promise<StaffMember | null> {
@@ -953,10 +979,8 @@ export class CompanyDataStore {
     id: string,
     data: Partial<LogisticsCompany>,
   ): Promise<LogisticsCompany | null> {
-
-
     console.log("this is what's coming in", data);
-    
+
     const { data: result, error } = await this.supabase
       .from("logistics_company")
       .update(LogisticsMapper.toUpdate(data))
@@ -1193,9 +1217,8 @@ export class CompanyDataStore {
     logisticsCompanyId: string,
     data: LogisticsInventoryItem[],
   ): Promise<LogisticsInventoryItem[]> {
-
     /* okay, so to avoid the problem where updating turns to duplicates, we delete first then re-create*/
-    
+
     const { error: deleteError } = await this.supabase
       .from("logistics_inventory")
       .delete()
@@ -1527,38 +1550,38 @@ export const ORDER_STATUS_OPTIONS: {
   label: string;
   color: string;
 }[] = [
-  { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
-  { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
-  { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
-  {
-    value: "delivered",
-    label: "Delivered",
-    color: "bg-green-50 text-green-700",
-  },
-  {
-    value: "uncommitted",
-    label: "Uncommitted",
-    color: "bg-gray-100 text-gray-600",
-  },
-  { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
-  { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
-  {
-    value: "not-reachable",
-    label: "Not Reachable",
-    color: "bg-orange-50 text-orange-700",
-  },
-  {
-    value: "not-picking",
-    label: "Not Picking",
-    color: "bg-orange-100 text-orange-800",
-  },
-  { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
-  {
-    value: "changed-date",
-    label: "Changed Date",
-    color: "bg-indigo-50 text-indigo-700",
-  },
-];
+    { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
+    { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
+    { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
+    {
+      value: "delivered",
+      label: "Delivered",
+      color: "bg-green-50 text-green-700",
+    },
+    {
+      value: "uncommitted",
+      label: "Uncommitted",
+      color: "bg-gray-100 text-gray-600",
+    },
+    { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
+    { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
+    {
+      value: "not-reachable",
+      label: "Not Reachable",
+      color: "bg-orange-50 text-orange-700",
+    },
+    {
+      value: "not-picking",
+      label: "Not Picking",
+      color: "bg-orange-100 text-orange-800",
+    },
+    { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
+    {
+      value: "changed-date",
+      label: "Changed Date",
+      color: "bg-indigo-50 text-indigo-700",
+    },
+  ];
 
 export function getOrderStatusColor(status: OrderStatus): string {
   return (

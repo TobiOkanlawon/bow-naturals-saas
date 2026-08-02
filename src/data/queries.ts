@@ -6,7 +6,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { dataStore } from "@/data/store";
+import { CreateStaffRequest, dataStore } from "@/data/store";
 
 /* ---------- Shared utility types ---------- */
 type AsyncData<T extends (...args: any[]) => Promise<any>> = Awaited<
@@ -168,7 +168,7 @@ function updateMutationHook<TData>(
   key: string,
   fn: (companyId: string, id: string, data: TData) => Promise<unknown>,
 ) {
-  return function () {
+  return function() {
     const qc = useQueryClient();
 
     return useMutation({
@@ -194,7 +194,7 @@ function deleteMutationHook(
   key: string,
   fn: (companyId: string, id: string) => Promise<unknown>,
 ) {
-  return function () {
+  return function() {
     const qc = useQueryClient();
 
     return useMutation({
@@ -233,7 +233,7 @@ export function useCreateStaff() {
       data,
     }: {
       companyId: string;
-      data: Omit<StaffMember, "id" | "companyId">;
+      data: CreateStaffRequest
     }) => dataStore.createStaff(companyId, data),
 
     onSuccess: (_, { companyId }) => {
