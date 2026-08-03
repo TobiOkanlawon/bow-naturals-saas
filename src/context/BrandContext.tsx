@@ -4,9 +4,10 @@ import {
   useEffect,
   useState,
   type ReactNode,
-} from 'react';
-import { supabase } from '../config/supabase';
-import { useCompany } from './CompanyContext';
+} from "react";
+import { supabase } from "../config/supabase";
+import { useCompany } from "./CompanyContext";
+// import the logo
 
 export interface BrandSettings {
   name: string;
@@ -29,23 +30,23 @@ export interface BrandSettings {
 }
 
 const defaultBrand: BrandSettings = {
-  name: 'Bow Naturals',
-  tagline: 'Sales & Inventory Management',
-  logoUrl: '',
-  logoEmoji: '🌿',
-  primaryColor: '#4F46E5',
-  primaryDark: '#4338CA',
-  primaryLight: '#818CF8',
-  sidebarGradientFrom: '#312E81',
-  sidebarGradientTo: '#4F46E5',
-  accentColor: '#10B981',
-  ceoName: 'Sarah Johnson',
-  ceoEmail: 'ceo@company.com',
-  phoneNumber: '',
-  accountNumber: '',
-  bankName: '',
-  accountName: '',
-  thankYouMessage: 'Thank you for your order! We appreciate your business. 💚',
+  name: "Scale CRM",
+  tagline: "Measure, Grow, Dominate",
+  logoUrl: "",
+  logoEmoji: "",
+  primaryColor: "#4F46E5",
+  primaryDark: "#4338CA",
+  primaryLight: "#818CF8",
+  sidebarGradientFrom: "#312E81",
+  sidebarGradientTo: "#4F46E5",
+  accentColor: "#10B981",
+  ceoName: "Sarah Johnson",
+  ceoEmail: "ceo@company.com",
+  phoneNumber: "",
+  accountNumber: "",
+  bankName: "",
+  accountName: "",
+  thankYouMessage: "Thank you for your order! We appreciate your business. 💚",
 };
 
 // Maps DB row (snake_case) -> BrandSettings (camelCase)
@@ -58,8 +59,10 @@ function rowToBrand(row: any): BrandSettings {
     primaryColor: row.primary_color ?? defaultBrand.primaryColor,
     primaryDark: row.primary_dark ?? defaultBrand.primaryDark,
     primaryLight: row.primary_light ?? defaultBrand.primaryLight,
-    sidebarGradientFrom: row.sidebar_gradient_from ?? defaultBrand.sidebarGradientFrom,
-    sidebarGradientTo: row.sidebar_gradient_to ?? defaultBrand.sidebarGradientTo,
+    sidebarGradientFrom:
+      row.sidebar_gradient_from ?? defaultBrand.sidebarGradientFrom,
+    sidebarGradientTo:
+      row.sidebar_gradient_to ?? defaultBrand.sidebarGradientTo,
     accentColor: row.accent_color ?? defaultBrand.accentColor,
     ceoName: row.ceo_name ?? defaultBrand.ceoName,
     ceoEmail: row.ceo_email ?? defaultBrand.ceoEmail,
@@ -81,16 +84,20 @@ function brandToRow(companyId: string, brand: Partial<BrandSettings>) {
   if (brand.primaryColor !== undefined) row.primary_color = brand.primaryColor;
   if (brand.primaryDark !== undefined) row.primary_dark = brand.primaryDark;
   if (brand.primaryLight !== undefined) row.primary_light = brand.primaryLight;
-  if (brand.sidebarGradientFrom !== undefined) row.sidebar_gradient_from = brand.sidebarGradientFrom;
-  if (brand.sidebarGradientTo !== undefined) row.sidebar_gradient_to = brand.sidebarGradientTo;
+  if (brand.sidebarGradientFrom !== undefined)
+    row.sidebar_gradient_from = brand.sidebarGradientFrom;
+  if (brand.sidebarGradientTo !== undefined)
+    row.sidebar_gradient_to = brand.sidebarGradientTo;
   if (brand.accentColor !== undefined) row.accent_color = brand.accentColor;
   if (brand.ceoName !== undefined) row.ceo_name = brand.ceoName;
   if (brand.ceoEmail !== undefined) row.ceo_email = brand.ceoEmail;
   if (brand.phoneNumber !== undefined) row.phone_number = brand.phoneNumber;
-  if (brand.accountNumber !== undefined) row.account_number = brand.accountNumber;
+  if (brand.accountNumber !== undefined)
+    row.account_number = brand.accountNumber;
   if (brand.bankName !== undefined) row.bank_name = brand.bankName;
   if (brand.accountName !== undefined) row.account_name = brand.accountName;
-  if (brand.thankYouMessage !== undefined) row.thank_you_message = brand.thankYouMessage;
+  if (brand.thankYouMessage !== undefined)
+    row.thank_you_message = brand.thankYouMessage;
   return row;
 }
 
@@ -127,15 +134,15 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     async function loadBrand() {
       setLoading(true);
       const { data, error } = await supabase
-        .from('brand_settings')
-        .select('*')
-        .eq('company_id', companyId)
+        .from("brand_settings")
+        .select("*")
+        .eq("company_id", companyId)
         .maybeSingle();
 
       if (cancelled) return;
 
       if (error) {
-        console.error('Failed to load brand settings:', error);
+        console.error("Failed to load brand settings:", error);
         setBrand(defaultBrand);
       } else {
         setBrand(data ? rowToBrand(data) : defaultBrand);
@@ -149,20 +156,20 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     const channel = supabase
       .channel(`brand-settings-${companyId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'brand_settings',
+          event: "*",
+          schema: "public",
+          table: "brand_settings",
           filter: `company_id=eq.${companyId}`,
         },
         (payload) => {
-          if (payload.eventType === 'DELETE') {
+          if (payload.eventType === "DELETE") {
             setBrand(defaultBrand);
           } else {
             setBrand(rowToBrand(payload.new));
           }
-        }
+        },
       )
       .subscribe();
 
@@ -176,14 +183,14 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     if (!companyId) return;
 
     // Optimistic local update
-    setBrand(prev => ({ ...prev, ...updates }));
+    setBrand((prev) => ({ ...prev, ...updates }));
 
     const { error } = await supabase
-      .from('brand_settings')
-      .upsert(brandToRow(companyId, updates), { onConflict: 'company_id' });
+      .from("brand_settings")
+      .upsert(brandToRow(companyId, updates), { onConflict: "company_id" });
 
     if (error) {
-      console.error('Failed to update brand settings:', error);
+      console.error("Failed to update brand settings:", error);
     }
   };
 
@@ -193,12 +200,12 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     setBrand(defaultBrand);
 
     const { error } = await supabase
-      .from('brand_settings')
+      .from("brand_settings")
       .delete()
-      .eq('company_id', companyId);
+      .eq("company_id", companyId);
 
     if (error) {
-      console.error('Failed to reset brand settings:', error);
+      console.error("Failed to reset brand settings:", error);
     }
   };
 
