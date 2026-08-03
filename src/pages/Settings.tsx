@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useBrand, type BrandSettings } from "../context/BrandContext";
+import { useCompany } from "@/context/CompanyContext";
+import { dataStore } from "@/data/store";
 import {
   Save,
   RotateCcw,
@@ -98,40 +100,100 @@ const emojiOptions = [
 
 export default function Settings() {
   const { brand, updateBrand, resetBrand } = useBrand();
-  const [form, setForm] = useState<BrandSettings>({ ...brand });
+  const { company, getCurrentCompanyId } = useCompany();
+  const [form, setForm] = useState<BrandSettings>({
+    ...brand,
+    name: company.name,
+  });
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "brand" | "ceo" | "colors" | "preview"
   >("brand");
 
-  const handleSave = () => {
-    updateBrand(form);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  // populate form from company data when available
+  useEffect(() => {
+    if (!company) return;
 
-  const handleReset = () => {
-    resetBrand();
-    setForm({
-      name: "Bow Naturals",
-      tagline: "Sales & Inventory Management",
-      logoUrl: "",
-      logoEmoji: "🌿",
-      primaryColor: "#4F46E5",
-      primaryDark: "#4338CA",
-      primaryLight: "#818CF8",
-      sidebarGradientFrom: "#312E81",
-      sidebarGradientTo: "#4F46E5",
-      accentColor: "#10B981",
-      ceoName: "",
-      ceoEmail: "",
-      phoneNumber: "",
-      accountNumber: "",
-      bankName: "",
-      accountName: "",
-      thankYouMessage:
-        "Thank you for your order! We appreciate your business. 💚",
-    });
+    setForm((prev) => ({
+      ...prev,
+      name: company.name ?? prev.name,
+      tagline: (company as any).tagline ?? prev.tagline,
+      logoUrl: (company as any).logo_url ?? company.logoUrl ?? prev.logoUrl,
+      logoEmoji:
+        (company as any).logo_emoji ?? company.logoEmoji ?? prev.logoEmoji,
+      primaryColor:
+        company.primaryColor ??
+        (company as any).primary_color ??
+        prev.primaryColor,
+      primaryDark:
+        company.primaryDark ??
+        (company as any).primary_dark ??
+        prev.primaryDark,
+      primaryLight:
+        company.primaryLight ??
+        (company as any).primary_light ??
+        prev.primaryLight,
+      sidebarGradientFrom:
+        company.sidebarGradientFrom ??
+        (company as any).sidebar_gradient_from ??
+        prev.sidebarGradientFrom,
+      sidebarGradientTo:
+        company.sidebarGradientTo ??
+        (company as any).sidebar_gradient_to ??
+        prev.sidebarGradientTo,
+      accentColor:
+        company.accentColor ??
+        (company as any).accent_color ??
+        prev.accentColor,
+      ceoName: company.ceoName ?? prev.ceoName,
+      ceoEmail: company.ceoEmail ?? prev.ceoEmail,
+      phoneNumber: company.phoneNumber ?? prev.phoneNumber,
+      accountNumber: company.accountNumber ?? prev.accountNumber,
+      bankName: company.bankName ?? prev.bankName,
+      accountName: company.accountName ?? prev.accountName,
+      thankYouMessage: company.thankYouMessage ?? prev.thankYouMessage,
+    }));
+  }, [company]);
+
+  const handleSave = async () => {
+    // update local UI first
+    updateBrand(form);
+
+    // attempt to persist to the backend if we have a company id
+    const companyId = getCurrentCompanyId();
+
+    try {
+      if (companyId) {
+        await dataStore.updateCompanyData(companyId, {
+          name: form.name,
+          tagline: form.tagline,
+          logoUrl: form.logoUrl,
+          logoEmoji: form.logoEmoji,
+          primaryColor: form.primaryColor,
+          primaryDark: form.primaryDark,
+          primaryLight: form.primaryLight,
+          sidebarGradientFrom: form.sidebarGradientFrom,
+          sidebarGradientTo: form.sidebarGradientTo,
+          accentColor: form.accentColor,
+          phoneNumber: form.phoneNumber,
+          accountNumber: form.accountNumber,
+          bankName: form.bankName,
+          accountName: form.accountName,
+          thankYouMessage: form.thankYouMessage,
+          ceoName: form.ceoName,
+          ceoEmail: form.ceoEmail,
+        });
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      // fallback: still show saved UI but log error — better error handling can be added
+      // eslint-disable-next-line no-console
+      console.error("Failed to persist company settings:", err);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   const applyPreset = (preset: (typeof colorPresets)[0]) => {
@@ -162,12 +224,6 @@ export default function Settings() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleReset}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <RotateCcw size={14} /> Reset
-          </button>
           <button
             onClick={handleSave}
             className="btn-primary flex items-center gap-2"

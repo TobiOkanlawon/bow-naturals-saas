@@ -2,7 +2,6 @@
 import { supabase } from "@/config/supabase";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-
 // ==========================================
 // DATA TRANSFORMERS
 // ==========================================
@@ -60,17 +59,59 @@ export const LogisticsInventoryMapper = {
 };
 
 export const CompanyDataMapper = {
-  toDomain(row: Tables<"company"> & Tables<"profile"> & Tables<"subscription_plan">): Company {
+  toDomain({
+    company,
+    profile,
+    subscriptionPlan: plan,
+  }: {
+    company: Tables<"company">;
+    profile: Pick<Tables<"profile">, "full_name" | "email">;
+    subscriptionPlan: Tables<"subscription_plan">;
+  }): Company {
     return {
-      id: row.id,
-      name: row.name,
-      planId: row.plan_id ? row.plan_id : undefined,
-      planName: row.name,
-      ceoName: row.full_name,
-      ceoEmail: row.email,
-    }
-  }
-}
+      id: company.id,
+      name: company.name,
+      planId: company.plan_id ? company.plan_id : undefined,
+      planName: plan.name ?? "",
+      logoUrl: "",
+      logoEmoji: "",
+      primaryColor: "",
+      primaryDark: "",
+      primaryLight: "",
+      sidebarGradientFrom: "",
+      sidebarGradientTo: "",
+      accentColor: "",
+      phoneNumber: "",
+      accountNumber: "",
+      bankName: "",
+      accountName: "",
+      thankYouMessage: "",
+      ceoName: profile.full_name,
+      ceoEmail: profile.email,
+    };
+  },
+
+  toUpdate(data: Partial<Company>): TablesUpdate<"company"> {
+    return {
+      name: data.name,
+      tagline: data.tagline,
+      logo_url: data.logoUrl,
+      logo_emoji: data.logoEmoji,
+      primary_color: data.primaryColor,
+      primary_dark: data.primaryDark,
+      primary_light: data.primaryLight,
+      sidebar_gradient_from: data.sidebarGradientFrom,
+      sidebar_gradient_to: data.sidebarGradientTo,
+      accent_color: data.accentColor,
+      phone_number: data.phoneNumber,
+      account_number: data.accountNumber,
+      bank_name: data.bankName,
+      account_name: data.accountName,
+      thank_you_message: data.thankYouMessage,
+      updated_at: new Date().toISOString(),
+    };
+  },
+};
 
 export const StaffMapper = {
   toDomain(row: Tables<"profile">): StaffMember {
@@ -540,15 +581,18 @@ export class CompanyDataStore {
     companyId: string,
     data: CreateStaffRequest,
   ): Promise<StaffMember> {
-    const { data: d, error: e } = await this.supabase.functions.invoke("create-staff", {
-      body: {
-        ...data,
-        companyId,
-      }
-    })
+    const { data: d, error: e } = await this.supabase.functions.invoke(
+      "create-staff",
+      {
+        body: {
+          ...data,
+          companyId,
+        },
+      },
+    );
 
     if (e) {
-      throw new Error("failed to create staff")
+      throw new Error("failed to create staff");
     }
 
     return d;
@@ -580,7 +624,6 @@ export class CompanyDataStore {
     return this.delete("profile", companyId, id);
   }
 
-
   /* Company Data */
 
   async getCompanyData(companyId: string): Promise<Company> {
@@ -588,7 +631,7 @@ export class CompanyDataStore {
       .from("company")
       .select("*")
       .eq("id", companyId)
-      .maybeSingle()
+      .maybeSingle();
 
     if (error || !data) throw error;
 
@@ -596,28 +639,91 @@ export class CompanyDataStore {
       .from("subscription_plan")
       .select("*")
       .eq("id", data.plan_id)
-      .maybeSingle()
+      .maybeSingle();
 
     if (e || !planData) {
-      console.log("wer are here");
-      console.log("planData: ", planData)
-      console.log(e);
-    };
-
-    console.log("data from planData: ", planData)
+      // plan may be optional — continue without throwing
+      // console.debug("planData: ", planData, e);
+    }
 
     const { data: ceoData, error: f } = await this.supabase
       .from("profile")
       .select("full_name, email")
       .eq("role", "ceo")
       .eq("company_id", companyId)
-      .maybeSingle()
+      .maybeSingle();
 
     if (f || !ceoData) throw f;
 
     return CompanyDataMapper.toDomain({
-      ...data, ...planData, ...ceoData
-    })
+      company: data,
+      subscriptionPlan: planData || {},
+      profile: ceoData,
+    });
+  }
+
+  /**
+   * Update company-level settings and (if provided) the CEO profile row for this company.
+   * Note: password changes are not handled here (requires auth/admin function).
+   */
+  async updateCompanyData(
+    companyId: string,
+    data: Partial<Company>,
+  ): Promise<Company | null> {
+    // 1) Update company row
+    const { data: updatedCompany, error } = await this.supabase
+      .from("company")
+      .update(CompanyDataMapper.toUpdate(data))
+      .eq("id", companyId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // 2) Update CEO profile row if ceoName or ceoEmail provided
+    let updatedCeo: any = null;
+    if (data.ceoName !== undefined || data.ceoEmail !== undefined) {
+      const updatePayload: any = {};
+      if (data.ceoName !== undefined) updatePayload.full_name = data.ceoName;
+      if (data.ceoEmail !== undefined) updatePayload.email = data.ceoEmail;
+
+      const { data: ceoRow, error: ceoErr } = await this.supabase
+        .from("profile")
+        .update(updatePayload)
+        .eq("company_id", companyId)
+        .eq("role", "ceo")
+        .select()
+        .maybeSingle();
+
+      if (ceoErr) throw ceoErr;
+      updatedCeo = ceoRow;
+    } else {
+      // fetch existing ceo for domain mapping
+      const { data: ceoRow, error: ceoErr } = await this.supabase
+        .from("profile")
+        .select("full_name, email")
+        .eq("company_id", companyId)
+        .eq("role", "ceo")
+        .maybeSingle();
+
+      if (ceoErr) throw ceoErr;
+      updatedCeo = ceoRow;
+    }
+
+    if (!updatedCompany) return null;
+
+    // fetch plan data if any
+    const { data: planData } = await this.supabase
+      .from("subscription_plan")
+      .select("*")
+      .eq("id", updatedCompany.plan_id)
+      .maybeSingle();
+
+    return CompanyDataMapper.toDomain({
+      ...updatedCompany,
+      ...(planData || {}),
+      ...(updatedCeo || {}),
+    });
   }
 
   // ------------------------------------------------------------------
