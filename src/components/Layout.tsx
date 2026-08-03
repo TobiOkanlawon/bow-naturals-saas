@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useBrand } from "../context/BrandContext";
+import { useCompany } from "../context/CompanyContext.tsx";
 
 import {
   LayoutDashboard,
@@ -170,6 +171,8 @@ export default function Layout({
   children,
 }: LayoutProps) {
   const { user, logout } = useAuth();
+  const { company } = useCompany();
+
   const { brand } = useBrand();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -177,9 +180,6 @@ export default function Layout({
 
   const isCEO = user?.role === "ceo";
   const links = isCEO ? ceoLinks : staffLinks;
-
-
-  console.log("full name", user?.fullName)
 
   const displayName = user?.fullName || user?.email || "User";
 
@@ -221,7 +221,7 @@ export default function Layout({
           {brand.logoUrl ? (
             <img
               src={brand.logoUrl}
-              alt={brand.name}
+              alt={company?.name}
               className="w-9 h-9 rounded-lg object-cover"
             />
           ) : (
@@ -235,7 +235,7 @@ export default function Layout({
 
           <div className="flex-1 min-w-0">
             <h1 className="text-white font-bold text-sm truncate">
-              {brand.name}
+              {company?.name}
             </h1>
             <p className="text-white/50 text-[10px] truncate">
               {brand.tagline}
@@ -381,9 +381,7 @@ export default function Layout({
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );

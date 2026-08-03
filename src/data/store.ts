@@ -1,8 +1,7 @@
 // Centralized data store - uses pluggable storage adapter and CRUD repositories
 import { supabase } from "@/config/supabase";
-import Logistics from "@/pages/Logistics";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CreateStaffData } from "./queries";
+
 
 // ==========================================
 // DATA TRANSFORMERS
@@ -56,6 +55,54 @@ export const LogisticsInventoryMapper = {
       quantity: data.quantity,
       min_stock: data.minStock,
       product_id: data.productId,
+    };
+  },
+};
+
+export const CompanyDataMapper = {
+  toDomain(row: Tables<"company"> & Tables<"profile"> & Tables<"subscription_plan">): Company {
+    return {
+      id: row.id,
+      name: row.name,
+      tagline: row.tagline ?? undefined,
+      planId: row.plan_id ? row.plan_id : undefined,
+      planName: (row as any).plan_name ?? row.name,
+      logoUrl: (row as any).logo_url ?? undefined,
+      logoEmoji: (row as any).logo_emoji ?? undefined,
+      primaryColor: (row as any).primary_color ?? undefined,
+      primaryDark: (row as any).primary_dark ?? undefined,
+      primaryLight: (row as any).primary_light ?? undefined,
+      sidebarGradientFrom: (row as any).sidebar_gradient_from ?? undefined,
+      sidebarGradientTo: (row as any).sidebar_gradient_to ?? undefined,
+      accentColor: (row as any).accent_color ?? undefined,
+      phoneNumber: (row as any).phone_number ?? undefined,
+      accountNumber: (row as any).account_number ?? undefined,
+      bankName: (row as any).bank_name ?? undefined,
+      accountName: (row as any).account_name ?? undefined,
+      thankYouMessage: (row as any).thank_you_message ?? undefined,
+      ceoName: row.full_name,
+      ceoEmail: row.email,
+    };
+  },
+
+  toUpdate(data: Partial<Company>): TablesUpdate<"company"> {
+    return {
+      name: data.name,
+      tagline: data.tagline,
+      logo_url: data.logoUrl,
+      logo_emoji: data.logoEmoji,
+      primary_color: data.primaryColor,
+      primary_dark: data.primaryDark,
+      primary_light: data.primaryLight,
+      sidebar_gradient_from: data.sidebarGradientFrom,
+      sidebar_gradient_to: data.sidebarGradientTo,
+      accent_color: data.accentColor,
+      phone_number: data.phoneNumber,
+      account_number: data.accountNumber,
+      bank_name: data.bankName,
+      account_name: data.accountName,
+      thank_you_message: data.thankYouMessage,
+      updated_at: new Date().toISOString(),
     };
   },
 };
@@ -566,6 +613,109 @@ export class CompanyDataStore {
 
   async deleteStaff(companyId: string, id: number): Promise<boolean> {
     return this.delete("profile", companyId, id);
+  }
+
+
+  /* Company Data */
+
+  async getCompanyData(companyId: string): Promise<Company> {
+    const { data, error } = await this.supabase
+      .from("company")
+      .select("*")
+      .eq("id", companyId)
+      .maybeSingle()
+
+    if (error || !data) throw error;
+
+    const { data: planData, error: e } = await this.supabase
+      .from("subscription_plan")
+      .select("*")
+      .eq("id", data.plan_id)
+      .maybeSingle()
+
+    if (e || !planData) {
+      // plan may be optional — continue without throwing
+      // console.debug("planData: ", planData, e);
+    }
+
+    const { data: ceoData, error: f } = await this.supabase
+      .from("profile")
+      .select("full_name, email")
+      .eq("role", "ceo")
+      .eq("company_id", companyId)
+      .maybeSingle()
+
+    if (f || !ceoData) throw f;
+
+    return CompanyDataMapper.toDomain({
+      ...data,
+      ...(planData || {}),
+      ...ceoData,
+    });
+  }
+
+  /**
+   * Update company-level settings and (if provided) the CEO profile row for this company.
+   * Note: password changes are not handled here (requires auth/admin function).
+   */
+  async updateCompanyData(
+    companyId: string,
+    data: Partial<Company>,
+  ): Promise<Company | null> {
+    // 1) Update company row
+    const { data: updatedCompany, error } = await this.supabase
+      .from("company")
+      .update(CompanyDataMapper.toUpdate(data))
+      .eq("id", companyId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // 2) Update CEO profile row if ceoName or ceoEmail provided
+    let updatedCeo: any = null;
+    if (data.ceoName !== undefined || data.ceoEmail !== undefined) {
+      const updatePayload: any = {};
+      if (data.ceoName !== undefined) updatePayload.full_name = data.ceoName;
+      if (data.ceoEmail !== undefined) updatePayload.email = data.ceoEmail;
+
+      const { data: ceoRow, error: ceoErr } = await this.supabase
+        .from("profile")
+        .update(updatePayload)
+        .eq("company_id", companyId)
+        .eq("role", "ceo")
+        .select()
+        .maybeSingle();
+
+      if (ceoErr) throw ceoErr;
+      updatedCeo = ceoRow;
+    } else {
+      // fetch existing ceo for domain mapping
+      const { data: ceoRow, error: ceoErr } = await this.supabase
+        .from("profile")
+        .select("full_name, email")
+        .eq("company_id", companyId)
+        .eq("role", "ceo")
+        .maybeSingle();
+
+      if (ceoErr) throw ceoErr;
+      updatedCeo = ceoRow;
+    }
+
+    if (!updatedCompany) return null;
+
+    // fetch plan data if any
+    const { data: planData } = await this.supabase
+      .from("subscription_plan")
+      .select("*")
+      .eq("id", updatedCompany.plan_id)
+      .maybeSingle();
+
+    return CompanyDataMapper.toDomain({
+      ...updatedCompany,
+      ...(planData || {}),
+      ...(updatedCeo || {}),
+    });
   }
 
   // ------------------------------------------------------------------
@@ -1598,15 +1748,15 @@ type TablesUpdate<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Update"];
 type TableName = keyof Database["public"]["Tables"];
 
-// Use consistent table names everywhere
-const DB_TABLES = {
-  staff: "profiles",
-  products: "products",
-  logistics: "logistics",
-  orders: "orders",
-  tasks: "tasks",
-  messages: "messages",
-  expenses: "expenses",
-} as const;
+// // Use consistent table names everywhere
+// const DB_TABLES = {
+//   staff: "profiles",
+//   products: "products",
+//   logistics: "logistics",
+//   orders: "orders",
+//   tasks: "tasks",
+//   messages: "messages",
+//   expenses: "expenses",
+// } as const;
 
 export const dataStore = new CompanyDataStore(supabase);

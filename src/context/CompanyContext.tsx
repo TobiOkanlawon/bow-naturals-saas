@@ -1,35 +1,31 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useGetCompanyData } from "@/data/queries";
 
-export interface Company {
-  id: string;
-  name: string;
-  ceoName?: string;
-  ceoEmail?: string;
-}
-
-interface CompanyContextType {
+export interface CompanyContextType {
   company: Company | null;
   getCurrentCompanyId: () => string;
 }
 
 const CompanyContext = createContext<CompanyContextType>({
   company: null,
-  getCurrentCompanyId: () => 'default-company',
+  getCurrentCompanyId: () => "",
 });
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
-  const [company, setCompany] = useState<Company>(() => {
-    const saved = {
-      id: "",
-      name: "Bow Naturals",
-    }
-    return saved
-  });
+  const { user } = useAuth();
 
-  const getCurrentCompanyId = () => company?.id
+  const getCurrentCompanyId = () => user?.companyId ?? "";
+
+  const { data } = useGetCompanyData(user?.companyId);
 
   return (
-    <CompanyContext.Provider value={{ company, getCurrentCompanyId }}>
+    <CompanyContext.Provider
+      value={{
+        company: data ?? null,
+        getCurrentCompanyId,
+      }}
+    >
       {children}
     </CompanyContext.Provider>
   );
