@@ -208,6 +208,15 @@ function deleteMutationHook(
   };
 }
 
+/* aggregate data fetching tool to get all the data needed in the company context*/
+export const useGetCompanyData = (companyId: string | undefined) => {
+  return useQuery<Company>({
+    queryKey: ["get-company", companyId],
+    queryFn: () => dataStore.getCompanyData(companyId),
+    enabled: !!companyId,
+  });
+}
+
 export function useStaff(companyId: string) {
   return useQuery<StaffMember[]>({
     queryKey: ["staff", companyId],

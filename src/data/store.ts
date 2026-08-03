@@ -1,8 +1,7 @@
 // Centralized data store - uses pluggable storage adapter and CRUD repositories
 import { supabase } from "@/config/supabase";
-import Logistics from "@/pages/Logistics";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { CreateStaffData } from "./queries";
+
 
 // ==========================================
 // DATA TRANSFORMERS
@@ -59,6 +58,19 @@ export const LogisticsInventoryMapper = {
     };
   },
 };
+
+export const CompanyDataMapper = {
+  toDomain(row: Tables<"company"> & Tables<"profile"> & Tables<"subscription_plan">): Company {
+    return {
+      id: row.id,
+      name: row.name,
+      planId: row.plan_id ? row.plan_id : undefined,
+      planName: row.name,
+      ceoName: row.full_name,
+      ceoEmail: row.email,
+    }
+  }
+}
 
 export const StaffMapper = {
   toDomain(row: Tables<"profile">): StaffMember {
@@ -566,6 +578,46 @@ export class CompanyDataStore {
 
   async deleteStaff(companyId: string, id: number): Promise<boolean> {
     return this.delete("profile", companyId, id);
+  }
+
+
+  /* Company Data */
+
+  async getCompanyData(companyId: string): Promise<Company> {
+    const { data, error } = await this.supabase
+      .from("company")
+      .select("*")
+      .eq("id", companyId)
+      .maybeSingle()
+
+    if (error || !data) throw error;
+
+    const { data: planData, error: e } = await this.supabase
+      .from("subscription_plan")
+      .select("*")
+      .eq("id", data.plan_id)
+      .maybeSingle()
+
+    if (e || !planData) {
+      console.log("wer are here");
+      console.log("planData: ", planData)
+      console.log(e);
+    };
+
+    console.log("data from planData: ", planData)
+
+    const { data: ceoData, error: f } = await this.supabase
+      .from("profile")
+      .select("full_name, email")
+      .eq("role", "ceo")
+      .eq("company_id", companyId)
+      .maybeSingle()
+
+    if (f || !ceoData) throw f;
+
+    return CompanyDataMapper.toDomain({
+      ...data, ...planData, ...ceoData
+    })
   }
 
   // ------------------------------------------------------------------
@@ -1598,15 +1650,15 @@ type TablesUpdate<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Update"];
 type TableName = keyof Database["public"]["Tables"];
 
-// Use consistent table names everywhere
-const DB_TABLES = {
-  staff: "profiles",
-  products: "products",
-  logistics: "logistics",
-  orders: "orders",
-  tasks: "tasks",
-  messages: "messages",
-  expenses: "expenses",
-} as const;
+// // Use consistent table names everywhere
+// const DB_TABLES = {
+//   staff: "profiles",
+//   products: "products",
+//   logistics: "logistics",
+//   orders: "orders",
+//   tasks: "tasks",
+//   messages: "messages",
+//   expenses: "expenses",
+// } as const;
 
 export const dataStore = new CompanyDataStore(supabase);

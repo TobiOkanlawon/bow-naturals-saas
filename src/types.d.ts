@@ -126,7 +126,7 @@ type Database = {
         Row: {
           created_at: string;
           id: string;
-          name: string | null;
+          name: string;
           plan_id: number | null;
         };
         Insert: {
@@ -572,23 +572,26 @@ type Database = {
           created_at: string;
           full_name: string;
           id: number;
-          role: Database["public"]["Enums"]["role"] | null;
+          role: Database["public"]["Enums"]["role"];
           user_id: string | null;
+          email: string;
         };
         Insert: {
           company_id?: string | null;
           created_at?: string;
           full_name?: string;
           id?: number;
-          role?: Database["public"]["Enums"]["role"] | null;
+          role?: Database["public"]["Enums"]["role"];
           user_id?: string | null;
+          email?: string | null;
         };
         Update: {
           company_id?: string | null;
           created_at?: string;
           full_name?: string;
           id?: number;
-          role?: Database["public"]["Enums"]["role"] | null;
+          role?: Database["public"]["Enums"]["role"];
+          email?: string | null;
           user_id?: string | null;
         };
         Relationships: [
@@ -1031,4 +1034,13 @@ interface LogisticsInventoryItem {
   productId: string;
   quantity: number;
   minStock: number;
+}
+
+interface Company {
+  id: string;
+  name: string;
+  planId?: number;
+  planName: string;
+  ceoName: string;
+  ceoEmail: string;
 }
