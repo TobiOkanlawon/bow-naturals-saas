@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useBrand, type BrandSettings } from "../context/BrandContext";
 import { useCompany } from "@/context/CompanyContext";
 import { dataStore } from "@/data/store";
+import { toast } from "react-toastify";
 import {
   Save,
   RotateCcw,
@@ -101,7 +102,7 @@ const emojiOptions = [
 export default function Settings() {
   const { brand, updateBrand, resetBrand } = useBrand();
   const { company, getCurrentCompanyId } = useCompany();
-  const [form, setForm] = useState<BrandSettings>({
+  const [form, setForm] = useState<Company>({
     ...brand,
     name: company.name,
   });
@@ -148,10 +149,10 @@ export default function Settings() {
       ceoName: company.ceoName ?? prev.ceoName,
       ceoEmail: company.ceoEmail ?? prev.ceoEmail,
       phoneNumber: company.phoneNumber ?? prev.phoneNumber,
-      accountNumber: company.accountNumber ?? prev.accountNumber,
+      accountNumber: company.bankAccountNumber ?? prev.bankAccountNumber,
       bankName: company.bankName ?? prev.bankName,
-      accountName: company.accountName ?? prev.accountName,
-      thankYouMessage: company.thankYouMessage ?? prev.thankYouMessage,
+      accountName: company.bankAccountName ?? prev.bankAccountName,
+      thankYouMessage: "" ?? prev.thankYouMessage,
     }));
   }, [company]);
 
@@ -162,28 +163,25 @@ export default function Settings() {
     // attempt to persist to the backend if we have a company id
     const companyId = getCurrentCompanyId();
 
+    if (!companyId) toast.error("Company ID not set. Cannot fulfill request");
+
     try {
-      if (companyId) {
-        await dataStore.updateCompanyData(companyId, {
-          name: form.name,
-          tagline: form.tagline,
-          logoUrl: form.logoUrl,
-          logoEmoji: form.logoEmoji,
-          primaryColor: form.primaryColor,
-          primaryDark: form.primaryDark,
-          primaryLight: form.primaryLight,
-          sidebarGradientFrom: form.sidebarGradientFrom,
-          sidebarGradientTo: form.sidebarGradientTo,
-          accentColor: form.accentColor,
-          phoneNumber: form.phoneNumber,
-          accountNumber: form.accountNumber,
-          bankName: form.bankName,
-          accountName: form.accountName,
-          thankYouMessage: form.thankYouMessage,
-          ceoName: form.ceoName,
-          ceoEmail: form.ceoEmail,
-        });
-      }
+      await dataStore.updateCompanyData(companyId, {
+        name: form.name,
+        logoUrl: form.logoUrl,
+        // primaryColor: form.primaryColor,
+        // primaryDark: form.primaryDark,
+        // primaryLight: form.primaryLight,
+        // sidebarGradientFrom: form.sidebarGradientFrom,
+        // sidebarGradientTo: form.sidebarGradientTo,
+        // accentColor: form.accentColor,
+        phoneNumber: form.phoneNumber,
+        bankAccountNumber: form.bankAccountNumber,
+        bankName: form.bankName,
+        bankAccountName: form.bankAccountName,
+        ceoName: form.ceoName,
+        ceoEmail: form.ceoEmail,
+      });
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -210,8 +208,8 @@ export default function Settings() {
   const tabs = [
     { key: "brand" as const, label: "Brand", icon: <Building2 size={16} /> },
     { key: "ceo" as const, label: "CEO", icon: <User size={16} /> },
-    { key: "colors" as const, label: "Colors", icon: <Palette size={16} /> },
-    { key: "preview" as const, label: "Preview", icon: <Eye size={16} /> },
+    // { key: "colors" as const, label: "Colors", icon: <Palette size={16} /> },
+    // { key: "preview" as const, label: "Preview", icon: <Eye size={16} /> },
   ];
 
   return (
@@ -226,8 +224,7 @@ export default function Settings() {
         <div className="flex gap-2">
           <button
             onClick={handleSave}
-            className="btn-primary flex items-center gap-2"
-            style={{ backgroundColor: form.primaryColor }}
+            className="btn-primary bg-[#4F46E5] flex items-center gap-2"
           >
             <Save size={14} /> {saved ? "✓ Saved!" : "Save Changes"}
           </button>
@@ -270,7 +267,7 @@ export default function Settings() {
                   placeholder="Your brand name"
                 />
               </div>
-              <div>
+              {/*<div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tagline
                 </label>
@@ -282,7 +279,8 @@ export default function Settings() {
                   }
                   placeholder="Your tagline or description"
                 />
-              </div>
+                </div>
+                */}
             </div>
           </div>
 
@@ -307,7 +305,7 @@ export default function Settings() {
                   Enter a URL to your logo image. Leave empty to use emoji.
                 </p>
               </div>
-              <div>
+              {/*<div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Logo Emoji (if no URL)
                 </label>
@@ -334,7 +332,7 @@ export default function Settings() {
                     </button>
                   ))}
                 </div>
-              </div>
+                </div> */}
             </div>
           </div>
 

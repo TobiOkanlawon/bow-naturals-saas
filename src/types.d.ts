@@ -128,18 +128,30 @@ type Database = {
           id: string;
           name: string;
           plan_id: number | null;
+          phone_number: string | null;
+          bank_name: string | null;
+          bank_account_number: number | null;
+          bank_account_name: string | null;
         };
         Insert: {
           created_at?: string;
           id?: string;
           name?: string | null;
           plan_id?: number | null;
+          phone_number?: string | null;
+          bank_name?: string | null;
+          bank_account_number?: number | null;
+          bank_account_name?: string | null;
         };
         Update: {
           created_at?: string;
           id?: string;
           name?: string | null;
           plan_id?: number | null;
+          phone_number?: string | null;
+          bank_name?: string | null;
+          bank_account_number?: number | null;
+          bank_account_name?: string | null;
         };
         Relationships: [
           {
@@ -1043,4 +1055,9 @@ interface Company {
   planName: string;
   ceoName: string;
   ceoEmail: string;
+  phoneNumber?: string;
+  bankName?: string;
+  bankAccountNumber?: number;
+  bankAccountName?: string;
+  logoUrl?: string;
 }
