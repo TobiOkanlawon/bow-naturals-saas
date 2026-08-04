@@ -167,15 +167,28 @@ export default function Products() {
     );
   };
 
-  const handleAddCustomTier = () => {
-    if (!customTier.name.trim()) return;
-    formik.setFieldValue("tiers", [...formik.values.tiers, customTier]);
+  const resetCustomTier = () => {
     setCustomTier({ name: "", costPrice: 0, sellingPrice: 0 });
+  };
+
+  const handleAddCustomTier = () => {
+    const tierName = customTier.name.trim();
+    if (!tierName) return;
+
+    const newTier: PriceTier = {
+      name: tierName,
+      costPrice: Number(customTier.costPrice) || 0,
+      sellingPrice: Number(customTier.sellingPrice) || 0,
+    };
+
+    formik.setFieldValue("tiers", [...formik.values.tiers, newTier]);
+    resetCustomTier();
   };
 
   // UI Handlers
   const openAddModal = () => {
     setEditing(null);
+    resetCustomTier();
     setShowModal(true);
   };
 
@@ -187,6 +200,7 @@ export default function Products() {
   const closeModal = () => {
     setShowModal(false);
     setEditing(null);
+    resetCustomTier();
     formik.resetForm();
   };
 
@@ -577,6 +591,12 @@ export default function Products() {
                         className="input-field text-sm"
                         placeholder="Tier name"
                         value={customTier.name}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddCustomTier();
+                          }
+                        }}
                         onChange={(e) =>
                           setCustomTier({
                             ...customTier,
@@ -589,6 +609,12 @@ export default function Products() {
                         type="number"
                         placeholder="Cost (₦)"
                         value={customTier.costPrice || ""}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddCustomTier();
+                          }
+                        }}
                         onChange={(e) =>
                           setCustomTier({
                             ...customTier,
@@ -602,6 +628,12 @@ export default function Products() {
                           type="number"
                           placeholder="Sell (₦)"
                           value={customTier.sellingPrice || ""}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddCustomTier();
+                            }
+                          }}
                           onChange={(e) =>
                             setCustomTier({
                               ...customTier,
@@ -612,7 +644,8 @@ export default function Products() {
                         <button
                           type="button"
                           onClick={handleAddCustomTier}
-                          className="btn-secondary px-3 text-xs"
+                          disabled={!customTier.name.trim()}
+                          className="btn-secondary px-3 text-xs disabled:opacity-50"
                         >
                           Add
                         </button>
