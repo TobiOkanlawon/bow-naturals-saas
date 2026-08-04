@@ -1,35 +1,34 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useBrand } from '../context/BrandContext';
-import { CreditCard, CheckCircle, Star, Zap, Crown, Rocket, Shield, Plus, X, Send } from 'lucide-react';
-// Store utilities available if needed
+import { useCompany } from '@/context/CompanyContext';
+import { useSubscriptionPlans } from '@/data/queries';
+import { CreditCard, CheckCircle, Star, Zap, Crown, Rocket, Plus, X, Send } from 'lucide-react';
 
 type Billing = 'monthly' | 'quarterly' | 'yearly';
 
 type Plan = {
-  id: string;
+  id: number;
   name: string;
+  label: string;
   icon: React.ReactNode;
   color: string;
   trial: string;
-  monthly: number;
-  quarterly: number;
-  yearly: number;
-  monthlyId: string;
-  quarterlyId: string;
-  yearlyId: string;
-  features: {text: string, included: boolean;}[];
+  priceInKobo: number;
+  paystackCode: string;
+  features: { text: string; included: boolean }[];
   limits: string;
   popular?: boolean;
+  billing: Billing;
+  family: 'starter' | 'growth' | 'professional' | 'enterprise';
 };
 
-const plans: Plan[] = [
-  {
-    id: 'starter', name: 'Starter', icon: <Star size={18} />, color: '#6B7280', trial: '7-day trial',
-    monthly: 5000, quarterly: 13500, yearly: 50000,
-    monthlyId: import.meta.env.VITE_STARTER_MONTHLY_ID ?? "",
-    quarterlyId: import.meta.env.VITE_STARTER_QUARTERLY_ID ?? "",
-    yearlyId: import.meta.env.VITE_STARTER_YEARLY_ID ?? "",
+const familyMeta: Record<Plan['family'], { name: string; icon: React.ReactNode; color: string; trial: string; features: { text: string; included: boolean }[]; limits: string; popular?: boolean }> = {
+  starter: {
+    name: 'Starter',
+    icon: <Star size={18} />,
+    color: '#6B7280',
+    trial: '7-day trial',
     features: [
       { text: '1 team member', included: true },
       { text: 'Unlimited orders', included: true },
@@ -44,12 +43,12 @@ const plans: Plan[] = [
     ],
     limits: '1 staff only',
   },
-  {
-    id: 'growth', name: 'Growth', icon: <Zap size={18} />, color: '#4F46E5', trial: '10-day trial', popular: true,
-    monthly: 8000, quarterly: 21600, yearly: 80000,
-    monthlyId: import.meta.env.VITE_GROWTH_MONTHLY_ID ?? "",
-    quarterlyId: import.meta.env.VITE_GROWTH_QUARTERLY_ID ?? "",
-    yearlyId: import.meta.env.VITE_GROWTH_YEARLY_ID ?? "",
+  growth: {
+    name: 'Growth',
+    icon: <Zap size={18} />,
+    color: '#4F46E5',
+    trial: '10-day trial',
+    popular: true,
     features: [
       { text: 'Up to 5 team members', included: true },
       { text: 'Up to 20 agents/locations', included: true },
@@ -65,12 +64,11 @@ const plans: Plan[] = [
     ],
     limits: '5 staff • 20 agents • 2,000 orders',
   },
-  {
-    id: 'professional', name: 'Professional', icon: <Crown size={18} />, color: '#059669', trial: '14-day trial',
-    monthly: 12000, quarterly: 32400, yearly: 120000,
-    monthlyId: import.meta.env.VITE_PROFESSIONAL_MONTHLY_ID ?? "",
-    quarterlyId: import.meta.env.VITE_PROFESSIONAL_QUARTERLY_ID ?? "",
-    yearlyId: import.meta.env.VITE_PROFESSIONAL_YEARLY_ID ?? "",
+  professional: {
+    name: 'Professional',
+    icon: <Crown size={18} />,
+    color: '#059669',
+    trial: '14-day trial',
     features: [
       { text: 'Unlimited team members', included: true },
       { text: 'Unlimited agents/locations', included: true },
@@ -86,12 +84,11 @@ const plans: Plan[] = [
     ],
     limits: 'Unlimited everything',
   },
-  {
-    id: 'enterprise', name: 'Enterprise', icon: <Rocket size={18} />, color: '#7C3AED', trial: '14-day trial',
-    monthly: 25000, quarterly: 67500, yearly: 250000,
-    monthlyId: import.meta.env.VITE_ENTERPRISE_MONTHLY_ID ?? "",
-    quarterlyId: import.meta.env.VITE_ENTERPRISE_QUARTERLY_ID ?? "",
-    yearlyId: import.meta.env.VITE_ENTERPRISE_YEARLY_ID ?? "",
+  enterprise: {
+    name: 'Enterprise',
+    icon: <Rocket size={18} />,
+    color: '#7C3AED',
+    trial: '14-day trial',
     features: [
       { text: 'Everything in Professional', included: true },
       { text: 'Custom domain included', included: true },
@@ -106,22 +103,50 @@ const plans: Plan[] = [
     ],
     limits: 'Enterprise suite + custom integrations',
   },
-];
+};
 
-const getPrice = (plan: typeof plans[0], billing: Billing) => billing === 'monthly' ? plan.monthly : billing === 'quarterly' ? plan.quarterly : plan.yearly;
 const getPeriod = (billing: Billing) => billing === 'monthly' ? '/mo' : billing === 'quarterly' ? '/qtr' : '/yr';
-const getSavings = (plan: typeof plans[0], billing: Billing) => {
-  if (billing === 'quarterly') return Math.round((1 - plan.quarterly / (plan.monthly * 3)) * 100);
-  if (billing === 'yearly') return Math.round((1 - plan.yearly / (plan.monthly * 12)) * 100);
+const getBillingLabel = (billing: Billing) => billing === 'monthly' ? 'Monthly' : billing === 'quarterly' ? 'Quarterly' : 'Yearly';
+const getSavings = (priceInKobo: number, billing: Billing) => {
+  if (billing === 'quarterly') return Math.round((1 - priceInKobo / 3000000) * 100);
+  if (billing === 'yearly') return Math.round((1 - priceInKobo / 6000000) * 100);
   return 0;
+};
+
+const getPlanFamily = (name: string): Plan['family'] | null => {
+  const normalized = name.trim().toLowerCase();
+  if (normalized.includes('starter')) return 'starter';
+  if (normalized.includes('growth')) return 'growth';
+  if (normalized.includes('professional')) return 'professional';
+  if (normalized.includes('enterprise')) return 'enterprise';
+  return null;
+};
+
+const getBillingFromName = (name: string): Billing | null => {
+  const normalized = name.trim().toLowerCase();
+  if (normalized.includes('yearly') || normalized.includes('annual')) return 'yearly';
+  if (normalized.includes('quarterly')) return 'quarterly';
+  if (normalized.includes('monthly')) return 'monthly';
+  return null;
+};
+
+const getBillingFromDurationDays = (durationDays: number): Billing => {
+  if (durationDays >= 300) return 'yearly';
+  if (durationDays >= 80) return 'quarterly';
+  return 'monthly';
+};
+
+const getBillingFromPlan = (name: string, durationDays: number): Billing => {
+  return getBillingFromName(name) ?? getBillingFromDurationDays(durationDays);
 };
 
 export default function Subscription() {
   const { brand } = useBrand();
+  const { company } = useCompany();
+  const { data: subscriptionPlans = [] } = useSubscriptionPlans();
   const [billing, setBilling] = useState<Billing>('monthly');
-  const [currentPlan] = useState('growth');
   const [showPaystack, setShowPaystack] = useState(false);
-  const [selectedUpgrade, setSelectedUpgrade] = useState('');
+  const [selectedUpgrade, setSelectedUpgrade] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   // Custom integration request
   const [showIntegrationRequest, setShowIntegrationRequest] = useState(false);
@@ -129,10 +154,40 @@ export default function Subscription() {
   const [integrationDesc, setIntegrationDesc] = useState('');
 
   const paystackPublicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY ?? '';
-  const paystackCurrency = import.meta.env.VITE_PAYSTACK_CURRENCY ?? 'NGN';
   const paystackScriptUrl = import.meta.env.VITE_PAYSTACK_SCRIPT_URL ?? 'https://js.paystack.co/v1/inline.js';
   const defaultCustomerEmail = import.meta.env.VITE_DEFAULT_CUSTOMER_EMAIL ?? 'customer@example.com';
-  const paymentRefPrefix = import.meta.env.VITE_PAYMENT_REF_PREFIX ?? 'SUB_';
+
+  const plans = useMemo<Plan[]>(() => {
+    return (subscriptionPlans as Array<{ id: number; name: string; paystackCode: string; priceInKobo: number; durationDays: number }>).map((plan) => {
+      const family = getPlanFamily(plan.name);
+      const billingFromPlan = getBillingFromPlan(plan.name, plan.durationDays);
+      if (!family) return null;
+
+      const meta = familyMeta[family];
+      return {
+        id: plan.id,
+        name: plan.name,
+        label: `${meta.name} — ${getBillingLabel(billingFromPlan)}`,
+        icon: meta.icon,
+        color: meta.color,
+        trial: meta.trial,
+        priceInKobo: plan.priceInKobo,
+        paystackCode: plan.paystackCode,
+        features: [...meta.features],
+        limits: meta.limits,
+        popular: meta.popular,
+        billing: billingFromPlan,
+        family,
+      } satisfies Plan;
+    }).filter(Boolean) as Plan[];
+  }, [subscriptionPlans]);
+
+  const currentPlan = useMemo(() => {
+    if (!company?.planName) return null;
+    return plans.find((plan) => plan.name.toLowerCase() === company.planName.toLowerCase()) ?? null;
+  }, [company?.planName, plans]);
+
+  const visiblePlans = useMemo(() => plans.filter((plan) => plan.billing === billing), [plans, billing]);
 
   const loadPaystackScript = () => {
     if ((window as any).PaystackPop) return Promise.resolve(true);
@@ -146,7 +201,7 @@ export default function Subscription() {
     });
   };
 
-  const handleUpgrade = (planId: string) => { setSelectedUpgrade(planId); setShowPaystack(true); };
+  const handleUpgrade = (planId: number) => { setSelectedUpgrade(planId); setShowPaystack(true); };
 
   const processPayment = async () => {
     const plan = plans.find(p => p.id === selectedUpgrade);
@@ -163,20 +218,16 @@ export default function Subscription() {
       const paystack = (window as any).PaystackPop;
       if (!paystack) throw new Error('Paystack is unavailable.');
 
-      const planId = billing === 'monthly' ? plan.monthlyId : billing === 'quarterly' ? plan.quarterlyId : plan.yearlyId;
-
-      console.log(planId)
-
       const handler = paystack.setup({
         key: paystackPublicKey,
         email: defaultCustomerEmail,
-        amount: getPrice(plan, billing) * 100,
-        plan: planId,
+        amount: plan.priceInKobo,
+        plan: plan.paystackCode || plan.id.toString(),
         currency: 'NGN',
         ref: `SUB_${plan.id}_${Date.now()}`,
         metadata: {
-          plan: plan.id,
-          billing,
+          plan: plan.name,
+          billing: plan.billing,
         },
         callback: (response: any) => {
           setLoading(false);
@@ -209,8 +260,21 @@ export default function Subscription() {
       {/* Current Plan */}
       <div className="card p-5 border-l-4" style={{ borderLeftColor: brand.primaryColor }}>
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div><p className="text-xs text-gray-500">Current Plan</p><p className="text-lg font-bold text-gray-900 flex items-center gap-2">Growth <Zap size={16} className="text-indigo-500" /></p><p className="text-sm text-gray-500">Next billing: January 15, 2025 • 10-day trial active</p></div>
-          <div className="text-right"><p className="text-2xl font-bold" style={{ color: brand.primaryColor }}>₦8,000<span className="text-sm text-gray-400">/mo</span></p><p className="text-xs text-green-600">Active ✓</p></div>
+          <div>
+            <p className="text-xs text-gray-500">Current Plan</p>
+            <p className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              {company?.planName || 'No plan selected'}
+              {currentPlan?.family === 'growth' && <Zap size={16} className="text-indigo-500" />}
+            </p>
+            <p className="text-sm text-gray-500">This comes from the subscription plan attached to your company.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold" style={{ color: brand.primaryColor }}>
+              ₦{((currentPlan?.priceInKobo ?? 0) / 100).toLocaleString()}
+              <span className="text-sm text-gray-400">/{billing === 'monthly' ? 'mo' : billing === 'quarterly' ? 'qtr' : 'yr'}</span>
+            </p>
+            <p className="text-xs text-green-600">Active ✓</p>
+          </div>
         </div>
       </div>
 
@@ -230,23 +294,23 @@ export default function Subscription() {
 
       {/* Plans Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {plans.map(plan => {
-          const price = getPrice(plan, billing);
-          const savings = getSavings(plan, billing);
-          const isCurrent = plan.id === currentPlan;
+        {visiblePlans.map(plan => {
+          const price = plan.priceInKobo / 100;
+          const savings = getSavings(plan.priceInKobo, plan.billing);
+          const isCurrent = currentPlan?.id === plan.id;
           return (
             <div key={plan.id} className={`card p-5 relative flex flex-col ${plan.popular ? 'ring-2' : ''}`} style={plan.popular ? { borderColor: plan.color, boxShadow: `0 0 0 2px ${plan.color}20` } : {}}>
               {plan.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 badge text-white text-[10px] px-3" style={{ backgroundColor: plan.color }}>Most Popular</div>}
               <div className="text-center mb-4">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white mx-auto mb-2" style={{ backgroundColor: plan.color }}>{plan.icon}</div>
-                <h3 className="text-base font-bold text-gray-900">{plan.name}</h3>
+                <h3 className="text-base font-bold text-gray-900">{plan.label}</h3>
                 <p className="text-[10px] text-green-600 font-medium">{plan.trial}</p>
                 <div className="mt-2">
                   <span className="text-3xl font-bold" style={{ color: plan.color }}>₦{price.toLocaleString()}</span>
-                  <span className="text-xs text-gray-400">{getPeriod(billing)}</span>
+                  <span className="text-xs text-gray-400">{getPeriod(plan.billing)}</span>
                 </div>
                 {savings > 0 && <p className="text-xs text-green-600 mt-1">Save {savings}% vs monthly</p>}
-                {billing === 'yearly' && <p className="text-[10px] text-green-600 font-semibold">Includes 2 months free!</p>}
+                {plan.billing === 'yearly' && <p className="text-[10px] text-green-600 font-semibold">Includes 2 months free!</p>}
                 <p className="text-[10px] text-gray-500 mt-1 font-semibold">{plan.limits}</p>
               </div>
               <div className="space-y-1.5 flex-1 mb-4">
@@ -275,17 +339,6 @@ export default function Subscription() {
         </div>
       )}
 
-      {/* Payment Method */}
-      <div className="card p-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2"><CreditCard size={16} /> Payment Method</h3>
-        <div className="flex items-center gap-4 bg-gray-50 rounded-lg p-4">
-          <div className="w-12 h-8 rounded bg-blue-600 flex items-center justify-center text-white text-xs font-bold">VISA</div>
-          <div className="flex-1"><p className="text-sm font-medium text-gray-900">•••• •••• •••• 4242</p><p className="text-xs text-gray-500">Expires 12/2026</p></div>
-          <button className="btn-secondary text-xs">Update</button>
-        </div>
-        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1"><Shield size={10} /> Secured by Paystack. PCI DSS compliant.</p>
-      </div>
-
       {/* Paystack Modal */}
       {showPaystack && (() => {
         const plan = plans.find(p => p.id === selectedUpgrade);
@@ -294,8 +347,8 @@ export default function Subscription() {
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowPaystack(false)}>
             <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
               <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white mx-auto mb-3" style={{ backgroundColor: plan.color }}>{plan.icon}</div>
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Upgrade to {plan.name}</h3>
-              <p className="text-2xl font-bold mb-1" style={{ color: plan.color }}>₦{getPrice(plan, billing).toLocaleString()}<span className="text-sm text-gray-400">{getPeriod(billing)}</span></p>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Upgrade to {plan.label}</h3>
+              <p className="text-2xl font-bold mb-1" style={{ color: plan.color }}>₦{(plan.priceInKobo / 100).toLocaleString()}<span className="text-sm text-gray-400">{getPeriod(plan.billing)}</span></p>
               <p className="text-xs text-green-600 mb-4">{plan.trial} included</p>
               {!paystackPublicKey && (
                 <p className="text-xs text-red-600 mb-3">Paystack public key is missing. Configure <code>VITE_PAYSTACK_PUBLIC_KEY</code> in your environment.</p>

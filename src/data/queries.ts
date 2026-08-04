@@ -168,7 +168,7 @@ function updateMutationHook<TData>(
   key: string,
   fn: (companyId: string, id: string, data: TData) => Promise<unknown>,
 ) {
-  return function() {
+  return function () {
     const qc = useQueryClient();
 
     return useMutation({
@@ -194,7 +194,7 @@ function deleteMutationHook(
   key: string,
   fn: (companyId: string, id: string) => Promise<unknown>,
 ) {
-  return function() {
+  return function () {
     const qc = useQueryClient();
 
     return useMutation({
@@ -212,8 +212,15 @@ function deleteMutationHook(
 export const useGetCompanyData = (companyId: string | undefined) => {
   return useQuery<Company>({
     queryKey: ["get-company", companyId],
-    queryFn: () => dataStore.getCompanyData(companyId),
+    queryFn: () => dataStore.getCompanyData(companyId as string),
     enabled: !!companyId,
+  });
+};
+
+export function useSubscriptionPlans() {
+  return useQuery({
+    queryKey: ["subscription-plans"],
+    queryFn: () => dataStore.getSubscriptionPlans(),
   });
 }
 
@@ -242,7 +249,7 @@ export function useCreateStaff() {
       data,
     }: {
       companyId: string;
-      data: CreateStaffRequest
+      data: CreateStaffRequest;
     }) => dataStore.createStaff(companyId, data),
 
     onSuccess: (_, { companyId }) => {

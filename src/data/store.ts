@@ -91,6 +91,7 @@ export const CompanyDataMapper = {
   },
 
   toUpdate(data: Partial<Company>): TablesUpdate<"company"> {
+    console.log("data: ", data);
     return {
       name: data.name,
       phone_number: data.phoneNumber,
@@ -481,7 +482,7 @@ export const ExpenseMapper = {
  * Uses repositories to isolate data by companyId
  */
 export class CompanyDataStore {
-  constructor(private readonly supabase: SupabaseClient) { }
+  constructor(private readonly supabase: SupabaseClient) {}
 
   private async create<TDomain, TInsert>(
     table: keyof Database["public"]["Tables"],
@@ -613,6 +614,31 @@ export class CompanyDataStore {
   }
 
   /* Company Data */
+
+  async getSubscriptionPlans(): Promise<
+    Array<{
+      id: number;
+      name: string;
+      paystackCode: string;
+      priceInKobo: number;
+      durationDays: number;
+    }>
+  > {
+    const { data, error } = await this.supabase
+      .from("subscription_plan")
+      .select("id, name, paystack_code, price_in_kobo, duration_days")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      paystackCode: row.paystack_code ?? "",
+      priceInKobo: row.price_in_kobo ?? 0,
+      durationDays: row.duration_days ?? 0,
+    }));
+  }
 
   async getCompanyData(companyId: string): Promise<Company> {
     const { data, error } = await this.supabase
@@ -1696,38 +1722,38 @@ export const ORDER_STATUS_OPTIONS: {
   label: string;
   color: string;
 }[] = [
-    { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
-    { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
-    { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
-    {
-      value: "delivered",
-      label: "Delivered",
-      color: "bg-green-50 text-green-700",
-    },
-    {
-      value: "uncommitted",
-      label: "Uncommitted",
-      color: "bg-gray-100 text-gray-600",
-    },
-    { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
-    { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
-    {
-      value: "not-reachable",
-      label: "Not Reachable",
-      color: "bg-orange-50 text-orange-700",
-    },
-    {
-      value: "not-picking",
-      label: "Not Picking",
-      color: "bg-orange-100 text-orange-800",
-    },
-    { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
-    {
-      value: "changed-date",
-      label: "Changed Date",
-      color: "bg-indigo-50 text-indigo-700",
-    },
-  ];
+  { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
+  { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
+  { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
+  {
+    value: "delivered",
+    label: "Delivered",
+    color: "bg-green-50 text-green-700",
+  },
+  {
+    value: "uncommitted",
+    label: "Uncommitted",
+    color: "bg-gray-100 text-gray-600",
+  },
+  { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
+  { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
+  {
+    value: "not-reachable",
+    label: "Not Reachable",
+    color: "bg-orange-50 text-orange-700",
+  },
+  {
+    value: "not-picking",
+    label: "Not Picking",
+    color: "bg-orange-100 text-orange-800",
+  },
+  { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
+  {
+    value: "changed-date",
+    label: "Changed Date",
+    color: "bg-indigo-50 text-indigo-700",
+  },
+];
 
 export function getOrderStatusColor(status: OrderStatus): string {
   return (
