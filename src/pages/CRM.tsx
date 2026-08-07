@@ -629,8 +629,13 @@ export default function CRM() {
     });
   };
 
-  const openWhatsApp = (n: string) =>
-    window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
+  const openWhatsApp = (n?: string | null) => {
+  if (!n) {
+    toast.error("No WhatsApp number on file for this order");
+    return;
+  }
+  window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
+};
   const callCustomer = (n: string) => window.open(`tel:${n}`, "_self");
   const getTotalItems = (o: Order) =>
     o.items.reduce((s, i) => s + i.quantity, 0);
@@ -1045,8 +1050,9 @@ export default function CRM() {
                     e.stopPropagation();
                     openWhatsApp(order.whatsappNumber);
                   }}
+                  disabled={!order.whatsappNumber}
                   className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"
-                  title="WhatsApp"
+                  title={order.whatsappNumber ? "WhatsApp" : "No WhatsApp number"}
                 >
                   <MessageCircle size={14} />
                 </button>
@@ -1305,6 +1311,18 @@ export default function CRM() {
                     onChange={(e) =>
                       setForm({ ...form, whatsappNumber: e.target.value })
                     }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Email <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    className="input-field"
+                    type="email"
+                    value={form.email || ""}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="Optional"
                   />
                 </div>
                 <div>
