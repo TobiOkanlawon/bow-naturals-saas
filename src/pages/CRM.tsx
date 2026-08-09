@@ -45,6 +45,14 @@ import {
   useUpdateProduct,
 } from "@/data/queries";
 import { toast } from "react-toastify";
+import * as Yup from "yup";
+import { useFormik } from "formik";
+
+const schema = Yup.object({
+  customerName: Yup.string().required("You must enter your customer's name"),
+  phoneNumber: Yup.string().required("You must enter a phone number"),
+  orderItems: Yup.array().min(1),
+});
 
 const dealTypeLabels: Record<string, string> = {
   retail: "Retail",
@@ -429,9 +437,25 @@ export default function CRM() {
   });
 
   const save = async () => {
-    if (!form.customerName || !form.phoneNumber || !orderItems.length) {
-      toast.error("form not filled properly");
+    if (!form.customerName) {
+      toast.error("Customer not name not supplied");
+      return;
     }
+
+    if (!form.phoneNumber) {
+      toast.error("Customer phone number not supplied");
+      return;
+    }
+
+    if (!orderItems.length) {
+      toast.error("No items added to order");
+      return;
+    }
+
+    // if (!form.customerName || !form.phoneNumber || !orderItems.length) {
+    //   toast.error("form not filled properly");
+    //   return;
+    // }
 
     const { totalAmount, totalCost } = calculateTotals();
     const amountPaid = form.amountPaid || 0;
@@ -630,12 +654,12 @@ export default function CRM() {
   };
 
   const openWhatsApp = (n?: string | null) => {
-  if (!n) {
-    toast.error("No WhatsApp number on file for this order");
-    return;
-  }
-  window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
-};
+    if (!n) {
+      toast.error("No WhatsApp number on file for this order");
+      return;
+    }
+    window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
+  };
   const callCustomer = (n: string) => window.open(`tel:${n}`, "_self");
   const getTotalItems = (o: Order) =>
     o.items.reduce((s, i) => s + i.quantity, 0);
@@ -691,10 +715,16 @@ export default function CRM() {
   const invSubtotal = invItems.reduce((s, i) => s + i.price, 0);
   const invBalance = invSubtotal + invDelivery - invPaid;
 
-  const sendInvoiceToWhatsApp = () => {
-    if (!invoiceOrder) return;
-    // ...unchanged from your version — this part had no bugs, only omitted here for length.
-  };
+  // const sendInvoiceToWhatsApp = () => {
+  //   if (!invoiceOrder) return;
+  //   // ...unchanged from your version — this part had no bugs, only omitted here for length.
+  // };
+
+  // const formik = useFormik({
+  //   initialValues: {},
+  //   validationSchema: schema,
+  //   onSubmit: async () => {},
+  // });
 
   // ---- Guard rendering until auth + companyId are actually resolved ----
   if (authLoading || !companyId) {
@@ -1052,7 +1082,9 @@ export default function CRM() {
                   }}
                   disabled={!order.whatsappNumber}
                   className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"
-                  title={order.whatsappNumber ? "WhatsApp" : "No WhatsApp number"}
+                  title={
+                    order.whatsappNumber ? "WhatsApp" : "No WhatsApp number"
+                  }
                 >
                   <MessageCircle size={14} />
                 </button>
@@ -1321,7 +1353,9 @@ export default function CRM() {
                     className="input-field"
                     type="email"
                     value={form.email || ""}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, email: e.target.value })
+                    }
                     placeholder="Optional"
                   />
                 </div>
