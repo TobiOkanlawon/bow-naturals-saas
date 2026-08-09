@@ -716,36 +716,36 @@ type DefaultSchema = DatabaseWithoutInternals[Extract<
 
 type Tables<
   DefaultSchemaTableNameOrOptions extends
-  | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R;
     }
-  ? R
-  : never
+    ? R
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-    DefaultSchema["Views"])
-  ? (DefaultSchema["Tables"] &
-    DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-      Row: infer R;
-    }
-  ? R
-  : never
-  : never;
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
+      }
+      ? R
+      : never
+    : never;
 
 type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-  keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
@@ -755,21 +755,21 @@ type TablesInsert<
   schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Insert: infer I;
-  }
-  ? I
-  : never
+      Insert: infer I;
+    }
+    ? I
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-    Insert: infer I;
-  }
-  ? I
-  : never
-  : never;
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I;
+      }
+      ? I
+      : never
+    : never;
 
 type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-  keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
@@ -779,21 +779,21 @@ type TablesUpdate<
   schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Update: infer U;
-  }
-  ? U
-  : never
+      Update: infer U;
+    }
+    ? U
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-    Update: infer U;
-  }
-  ? U
-  : never
-  : never;
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U;
+      }
+      ? U
+      : never
+    : never;
 
 type Enums<
   DefaultSchemaEnumNameOrOptions extends
-  keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
   EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
@@ -804,13 +804,13 @@ type Enums<
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-  : never;
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never;
 
 type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-  | keyof DefaultSchema["CompositeTypes"]
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
@@ -821,8 +821,8 @@ type CompositeTypes<
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-  : never;
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never;
 
 const Constants = {
   graphql_public: {
@@ -835,6 +835,12 @@ const Constants = {
   },
 } as const;
 
+interface StaffPermissions {
+  canAddEditInventory: boolean;
+  canAddLogistics: boolean;
+  canMarkDelivered: boolean;
+}
+
 interface StaffMember {
   id: number; // profile.id is 'number' in database
   userId?: string | null;
@@ -842,6 +848,16 @@ interface StaffMember {
   fullName: string;
   role?: UserRole;
   createdAt: string;
+  email?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  salary?: number | null;
+  joinDate?: string | null;
+  status?: string | null;
+  permissions?: StaffPermissions;
+  invitationStatus?: string | null;
+  invitedAt?: string | null;
+  acceptedAt?: string | null;
 }
 
 interface Product {
@@ -864,7 +880,7 @@ interface ProductTier {
   costPrice: number;
   sellingPrice: number;
   productId: string;
-};
+}
 
 interface LogisticsCompany {
   id: string;
@@ -893,6 +909,7 @@ interface Order {
   deliveryAddress?: string | null;
   phoneNumber?: string | null;
   whatsappNumber?: string | null;
+  email?: string | null;
   notes?: string | null;
   orderDate?: string | null;
   expectedDeliveryDate?: string | null;
@@ -961,6 +978,7 @@ interface Order {
   customerName: string;
   phoneNumber: string;
   whatsappNumber: string;
+  email?: string;
   deliveryAddress: string;
   city: string;
   state: string;
@@ -984,12 +1002,12 @@ interface Order {
   isReturnCustomer: boolean;
   previousOrderId: string | null;
   followUpStatus:
-  | "pending"
-  | "reached"
-  | "responded"
-  | "good-feedback"
-  | "bad-feedback"
-  | "no-answer";
+    | "pending"
+    | "reached"
+    | "responded"
+    | "good-feedback"
+    | "bad-feedback"
+    | "no-answer";
   followUpNotes: string;
   followUpContactedAt: string;
 }
