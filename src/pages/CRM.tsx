@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useBrand } from "../context/BrandContext";
+import { useCompany } from "../context/CompanyContext";
 import {
   formatNaira,
   orderMatchesPhone,
@@ -70,6 +71,8 @@ const paymentStatusColors: Record<string, string> = {
 export default function CRM() {
   const { user, loading: authLoading } = useAuth();
   const { brand } = useBrand();
+  const { company } = useCompany();
+
   const companyId = user?.companyId as string;
 
   const isCEO = user?.role === "ceo";
@@ -715,10 +718,10 @@ export default function CRM() {
   const invSubtotal = invItems.reduce((s, i) => s + i.price, 0);
   const invBalance = invSubtotal + invDelivery - invPaid;
 
-  // const sendInvoiceToWhatsApp = () => {
-  //   if (!invoiceOrder) return;
-  //   // ...unchanged from your version — this part had no bugs, only omitted here for length.
-  // };
+  const sendInvoiceToWhatsApp = () => {
+    if (!invoiceOrder) return;
+    // ...unchanged from your version — this part had no bugs, only omitted here for length.
+  };
 
   // const formik = useFormik({
   //   initialValues: {},
@@ -2092,7 +2095,7 @@ export default function CRM() {
           >
             <div className="flex items-center justify-between p-5 border-b">
               <h3 className="font-semibold text-gray-900">
-                {brand.name} Invoice
+                {company.name} Invoice
               </h3>
               <button
                 onClick={() => setShowInvoiceModal(false)}
@@ -2103,9 +2106,9 @@ export default function CRM() {
             </div>
             <div className="p-5 space-y-4">
               <div className="text-center">
-                {brand.logoUrl ? (
+                {company.logoUrl ? (
                   <img
-                    src={brand.logoUrl}
+                    src={company.logoUrl}
                     alt=""
                     className="w-14 h-14 rounded-xl mx-auto mb-2 object-cover"
                   />
@@ -2121,7 +2124,7 @@ export default function CRM() {
                   className="text-xl font-bold"
                   style={{ color: brand.primaryColor }}
                 >
-                  {brand.name} Invoice
+                  {company.name} Invoice
                 </h2>
                 <p className="text-xs text-gray-400">{brand.tagline}</p>
               </div>
@@ -2260,19 +2263,19 @@ export default function CRM() {
                 </div>
               </div>
               {/* Bank Details */}
-              {brand.accountNumber && (
+              {company.accountNumber && (
                 <div className="bg-green-50 rounded-lg p-3 text-xs text-green-800 space-y-1">
                   <p className="font-semibold">💳 Payment Details</p>
                   <p>
-                    {brand.bankName} — {brand.accountNumber}
+                    {company.bankName} — {company.accountNumber}
                   </p>
-                  <p>{brand.accountName}</p>
+                  <p>{company.accountName}</p>
                 </div>
               )}
               {/* Phone */}
-              {brand.phoneNumber && (
+              {company.phoneNumber && (
                 <p className="text-center text-xs text-gray-500">
-                  📞 {brand.phoneNumber}
+                  📞 {company.phoneNumber}
                 </p>
               )}
               {/* Thank You */}
@@ -2296,7 +2299,7 @@ export default function CRM() {
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      `${brand.name} Invoice #${invoiceOrder.serialNumber}\n${invItems.map((i) => `${i.name} x${i.qty} = ${formatNaira(i.price)}${i.benefits ? ` (${i.benefits})` : ""}`).join("\n")}\nSubtotal: ${formatNaira(invSubtotal)}\nDelivery: ${formatNaira(invDelivery)}\nPaid: ${formatNaira(invPaid)}\nBalance: ${formatNaira(invBalance)}${brand.accountNumber ? `\n\n💳 ${brand.bankName} - ${brand.accountNumber}\n${brand.accountName}` : ""}${brand.phoneNumber ? `\n📞 ${brand.phoneNumber}` : ""}${brand.thankYouMessage ? `\n\n${brand.thankYouMessage}` : ""}`,
+                      `${company.name} Invoice #${invoiceOrder.serialNumber}\n${invItems.map((i) => `${i.name} x${i.qty} = ${formatNaira(i.price)}${i.benefits ? ` (${i.benefits})` : ""}`).join("\n")}\nSubtotal: ${formatNaira(invSubtotal)}\nDelivery: ${formatNaira(invDelivery)}\nPaid: ${formatNaira(invPaid)}\nBalance: ${formatNaira(invBalance)}${company.accountNumber ? `\n\n💳 ${company.bankName} - ${company.accountNumber}\n${company.accountName}` : ""}${company.phoneNumber ? `\n📞 ${company.phoneNumber}` : ""}${company.thankYouMessage ? `\n\n${company.thankYouMessage}` : ""}`,
                     );
                     alert("Copied!");
                   }}
