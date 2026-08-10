@@ -259,6 +259,8 @@ export const OrderMapper = {
 
       dealType: row.deal_type,
 
+      email: row.email,
+
       orderDate: row.order_date,
       expectedDeliveryDate: row.expected_delivery_date,
       actualDeliveryDate: row.actual_delivery_date,
@@ -314,6 +316,7 @@ export const OrderMapper = {
       delivery_address: data.deliveryAddress,
       phone_number: data.phoneNumber,
       whatsapp_number: data.whatsappNumber,
+      email: data.email,
       notes: data.notes,
       order_date: data.orderDate,
       expected_delivery_date: !!data.expectedDeliveryDate
@@ -335,6 +338,7 @@ export const OrderMapper = {
       total_amount: data.totalAmount,
       total_cost: data.totalCost,
       gross_profit: data.grossProfit,
+      email: data.email,
       delivery_fee: data.deliveryFee,
       city: data.city,
       state: data.state,
@@ -566,6 +570,40 @@ export class CompanyDataStore {
   // ------------------------------------------------------------------
   // STAFF
   // ------------------------------------------------------------------
+  private getDefaultPermissions(): StaffPermissions {
+    return {
+      canAddEditInventory: false,
+      canAddLogistics: false,
+      canMarkDelivered: false,
+    };
+  }
+
+  private async syncStaffPermissions(
+    userId: number,
+    permissions?: StaffPermissions,
+  ): Promise<void> {
+    if (permissions === undefined) return;
+
+    const { error } = await (this.supabase as any)
+      .from("permission")
+      .upsert(PermissionMapper.toInsert(userId, permissions), {
+        onConflict: "user_id",
+      });
+
+    if (error) throw error;
+  }
+
+  async getPermission(userId: number): Promise<StaffPermissions | null> {
+    const { data, error } = await (this.supabase as any)
+      .from("permission")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return PermissionMapper.toDomain(data);
+  }
+
   async createStaff(
     companyId: string,
     data: CreateStaffRequest,
@@ -611,6 +649,95 @@ export class CompanyDataStore {
 
   async deleteStaff(companyId: string, id: number): Promise<boolean> {
     return this.delete("profile", companyId, id);
+  }
+
+  async getOrderItemsByOrderId(orderId: string) {
+    const { data, error } = await this.supabase
+      .from("order_item")
+      .select("*")
+      .eq("order_id", orderId);
+
+    if (error) throw error;
+    return (data ?? []).map(OrderItemMapper.toDomain);
+  }
+
+  async getOrderItemById(id: string) {
+    const { data, error } = await this.supabase
+      .from("order_item")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    return OrderItemMapper.toDomain(data);
+  }
+
+  async getOrderItemsByProductId(productId: string) {
+    const { data, error } = await this.supabase
+      .from("order_item")
+      .select("*")
+      .eq("product_id", productId);
+
+    if (error) throw error;
+    return (data ?? []).map(OrderItemMapper.toDomain);
+  }
+
+  async createOrderItem(
+    orderId: string,
+    data: Omit<OrderItem, "id" | "orderId">,
+  ) {
+    const { data: row, error } = await this.supabase
+      .from("order_item")
+      .insert(OrderItemMapper.toInsert(orderId, data))
+      .select()
+      .single();
+
+    if (error) throw error;
+    return OrderItemMapper.toDomain(row);
+  }
+
+  async createOrderItems(
+    orderId: string,
+    items: Omit<OrderItem, "id" | "orderId">[],
+  ) {
+    const { data, error } = await this.supabase
+      .from("order_item")
+      .insert(items.map((item) => OrderItemMapper.toInsert(orderId, item)))
+      .select();
+
+    if (error) throw error;
+    return (data ?? []).map(OrderItemMapper.toDomain);
+  }
+
+  async updateOrderItem(
+    id: string,
+    data: Partial<Omit<OrderItem, "id" | "orderId">>,
+  ) {
+    const { data: row, error } = await this.supabase
+      .from("order_item")
+      .update(OrderItemMapper.toUpdate(data))
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return OrderItemMapper.toDomain(row);
+  }
+
+  async deleteOrderItem(id: string) {
+    const { error } = await this.supabase
+      .from("order_item")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+  }
+
+  async deleteOrderItemsByOrderId(orderId: string) {
+    const { error } = await this.supabase
+      .from("order_item")
+      .delete()
+      .eq("order_id", orderId);
+    if (error) throw error;
   }
 
   /* Company Data */
@@ -834,14 +961,16 @@ export class CompanyDataStore {
 
   /* Product Price Tiers */
 
-  async createProductPriceTier(
-    data: Omit<ProductTier, "id">,
-  ): Promise<ProductTier> {
-    return this.create(
-      "product_price_tier",
-      ProductPriceTierMapper.toInsert(data),
-      ProductPriceTierMapper.toDomain,
-    );
+  // Fetch all tiers for a single product
+  async getByProductId(productId: string) {
+    const { data, error } = await supabase
+      .from("product_price_tier")
+      .select("*")
+      .eq("product_id", productId)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []).map(ProductPriceTierMapper.toDomain);
   }
 
   // gets an array of all the product tiers related to the product ID supplied
@@ -1243,16 +1372,71 @@ export class CompanyDataStore {
     id: string,
     data: Partial<Order>,
   ): Promise<Order | null> {
-    return this.update(
+    // Update order core fields
+    const updated = await this.update(
       "orders",
       companyId,
       id,
       OrderMapper.toUpdate(data),
       OrderMapper.toDomain,
     );
+
+    if (!updated) return null;
+
+    // If items provided, sync them (create, update, delete)
+    if (data.items) {
+      const incoming = data.items as OrderItem[];
+      const existing = await this.getOrderItemsByOrderId(id);
+
+      const existingIds = existing.map((e) => e.id).filter(Boolean) as string[];
+      const incomingIds = incoming.map((i) => i.id).filter(Boolean) as string[];
+
+      // Delete items that are no longer present
+      const toDelete = existingIds.filter((eid) => !incomingIds.includes(eid));
+      for (const delId of toDelete) {
+        await this.deleteOrderItem(delId);
+      }
+
+      // Update existing items
+      const toUpdate = incoming.filter((i) => i.id) as OrderItem[];
+      for (const ui of toUpdate) {
+        await this.updateOrderItem(ui.id as string, {
+          productId: ui.productId,
+          productName: ui.productName,
+          quantity: ui.quantity,
+          unitPrice: ui.unitPrice,
+          costPrice: ui.costPrice,
+          tierName: ui.tierName,
+          stockAfterDelivery: ui.stockAfterDelivery,
+        });
+      }
+
+      // Create new items
+      const toCreate = incoming.filter((i) => !i.id) as Omit<
+        OrderItem,
+        "id" | "orderId"
+      >[];
+      if (toCreate.length) {
+        await this.createOrderItems(id, toCreate);
+      }
+
+      // Refetch order with items
+      const { data: refreshed, error } = await this.supabase
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("company_id", companyId)
+        .eq("id", id)
+        .single();
+
+      if (error || !refreshed) return OrderMapper.toDomain(updated);
+      return OrderMapper.toDomain(refreshed);
+    }
+
+    return updated;
   }
 
   async deleteOrder(companyId: string, id: string): Promise<boolean> {
+    await this.deleteOrderItemsByOrderId(id);
     return this.delete("orders", companyId, id);
   }
 
