@@ -1,5 +1,6 @@
 // Centralized data store - uses pluggable storage adapter and CRUD repositories
 import { supabase } from "@/config/supabase";
+import { ORDER_SELECT } from "./dbQueries";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 // ==========================================
@@ -23,6 +24,55 @@ export interface CreateStaffRequest {
 
   permissions?: Permissions;
 }
+
+export const OrderItemMapper = {
+  toDomain(row: Record<string, any> | null | undefined): OrderItem {
+    return {
+      id: row?.id,
+      orderId: row?.order_id,
+      productId: row?.product_id ?? null,
+      productName: row?.product_name ?? null,
+      quantity: Number(row?.quantity ?? 0),
+      unitPrice:
+        row?.unit_price !== null && row?.unit_price !== undefined
+          ? Number(row.unit_price)
+          : null,
+      costPrice:
+        row?.cost_price !== null && row?.cost_price !== undefined
+          ? Number(row.cost_price)
+          : null,
+      tierName: row?.tier_name ?? null,
+      stockAfterDelivery: row?.stock_after_delivery ?? null,
+    };
+  },
+
+  toInsert(orderId: string, data: Omit<OrderItem, "id" | "orderId">) {
+    return {
+      order_id: orderId,
+      product_id: data.productId,
+      product_name: data.productName,
+      quantity: data.quantity,
+      unit_price: data.unitPrice,
+      cost_price: data.costPrice,
+      tier_name: data.tierName,
+      stock_after_delivery: data.stockAfterDelivery,
+    };
+  },
+
+  toUpdate(data: Partial<Omit<OrderItem, "id" | "orderId">>) {
+    return {
+      ...(data.productId !== undefined && { product_id: data.productId }),
+      ...(data.productName !== undefined && { product_name: data.productName }),
+      ...(data.quantity !== undefined && { quantity: data.quantity }),
+      ...(data.unitPrice !== undefined && { unit_price: data.unitPrice }),
+      ...(data.costPrice !== undefined && { cost_price: data.costPrice }),
+      ...(data.tierName !== undefined && { tier_name: data.tierName }),
+      ...(data.stockAfterDelivery !== undefined && {
+        stock_after_delivery: data.stockAfterDelivery,
+      }),
+    };
+  },
+};
 
 export const LogisticsInventoryMapper = {
   toDomain(row: Tables<"logistics_inventory">): LogisticsInventoryItem {
