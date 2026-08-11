@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { toast } from "react-toastify";
 import { useFormik } from "formik";
 import {
     Plus,
@@ -129,6 +130,10 @@ export default function Products() {
 
             payload.tiers = filterUnusedTiers(payload.tiers);
 
+            if (!payload.tiers.length) {
+                toast.error("Each product must have at least one price tier");
+                return;
+            }
             if (editing) {
                 await updateProductMutation.mutateAsync({
                     companyId,
