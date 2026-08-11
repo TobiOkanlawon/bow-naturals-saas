@@ -1446,25 +1446,52 @@ export class CompanyDataStore {
     const { data: d, error } = await this.supabase
       .from("orders")
       .insert(OrderMapper.toInsert(data, companyId))
-      .select(
-        `
-    *,
-    previous_order:orders!previous_order_id(*)
-  `,
-      )
+      .select(ORDER_SELECT)
       .single();
 
     if (!d || error) throw error;
+
+    // If items were provided, create them linked to the new order id
+    if (data.items && data.items.length > 0) {
+      await this.createOrderItems(d.id, data.items as any);
+      // refetch order with items included
+      const { data: refreshed, error: rerr } = await this.supabase
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("id", d.id)
+        .single();
+
+      if (rerr || !refreshed)
+        throw rerr || new Error("failed to refetch order");
+      return OrderMapper.toDomain(refreshed);
+    }
 
     return OrderMapper.toDomain(d);
   }
 
   async getOrder(companyId: string, id: string): Promise<Order | null> {
-    return this.read("orders", companyId, id, OrderMapper.toDomain);
+    const { data, error } = await this.supabase
+      .from("orders")
+      .select(ORDER_SELECT)
+      .eq("company_id", companyId)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return OrderMapper.toDomain(data);
   }
 
   async getAllOrders(companyId: string): Promise<Order[]> {
-    return this.readAll("orders", companyId, OrderMapper.toDomain);
+    const { data, error } = await this.supabase
+      .from("orders")
+      .select(ORDER_SELECT)
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false });
+
+    console.log("le data", data);
+
+    if (error || !data) return [];
+    return data.map(OrderMapper.toDomain);
   }
 
   async updateOrder(
