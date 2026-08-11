@@ -729,10 +729,14 @@ export default function CRM() {
       return p.tiers.length > 0;
     });
 
-  const allTiers = products.reduce((accumulator, currentValue) => {
-    accumulator.push(...currentValue.tiers);
-    return accumulator;
-  }, []);
+  const allTiers = Array.from(
+    new Set(
+      products.reduce((accumulator, currentValue) => {
+        accumulator.push(...currentValue.tiers);
+        return accumulator;
+      }, []),
+    ),
+  );
 
   // ---- Guard rendering until auth + companyId are actually resolved ----
   if (authLoading || !companyId) {
