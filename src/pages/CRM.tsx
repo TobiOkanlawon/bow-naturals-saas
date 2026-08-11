@@ -723,11 +723,16 @@ export default function CRM() {
     // ...unchanged from your version — this part had no bugs, only omitted here for length.
   };
 
-  // const formik = useFormik({
-  //   initialValues: {},
-  //   validationSchema: schema,
-  //   onSubmit: async () => {},
-  // });
+  const showTiers =
+    products.length > 0 &&
+    products.some((p) => {
+      return p.tiers.length > 0;
+    });
+
+  const allTiers = products.reduce((accumulator, currentValue) => {
+    accumulator.push(...currentValue.tiers);
+    return accumulator;
+  }, []);
 
   // ---- Guard rendering until auth + companyId are actually resolved ----
   if (authLoading || !companyId) {
@@ -1521,10 +1526,9 @@ export default function CRM() {
                       value={selectedTier}
                       onChange={(e) => setSelectedTier(e.target.value)}
                     >
-                      {products.length > 0 &&
-                        products[0].tiers.length > 0 &&
-                        products[0].tiers.map((t) => (
-                          <option key={t.name} value={t.name}>
+                      {showTiers &&
+                        allTiers.map((t) => (
+                          <option key={t.id} value={t.name}>
                             {t.name}
                           </option>
                         ))}
