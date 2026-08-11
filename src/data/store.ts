@@ -1023,30 +1023,80 @@ export class CompanyDataStore {
     return (data ?? []).map(ProductPriceTierMapper.toDomain);
   }
 
-  // gets an array of all the product tiers related to the product ID supplied
-  async getProductPriceTier(productId: string): Promise<ProductTier[]> {
-    const { data, error } = await this.supabase
+  // Fetch a single tier by id
+  async getById(id: string) {
+    const { data, error } = await supabase
       .from("product_price_tier")
       .select("*")
-      .eq("product_id", productId);
+      .eq("id", id)
+      .single();
 
-    if (error || !data) return [];
-    return data.map(ProductPriceTierMapper.toDomain);
+    if (error) throw error;
+    return ProductPriceTierMapper.toDomain(data);
+  }
+
+  // All tier rows across every product belonging to a company
+  // — direct column now, no join needed
+  async getAllForCompany(companyId: string) {
+    const { data, error } = await supabase
+      .from("product_price_tier")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []).map(ProductPriceTierMapper.toDomain);
+  }
+
+  // Unique tier NAMES for a company (e.g. "Retail", "Wholesale")
+  // deduped client-side since PostgREST has no native DISTINCT support
+  async getUniqueTierNamesForCompany(companyId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from("product_price_tier")
+      .select("name")
+      .eq("company_id", companyId);
+
+    if (error) throw error;
+
+    const names = (data ?? []).map((row) => row.name as string);
+    return Array.from(new Set(names)).sort();
+  }
+
+  async createProductPriceTier(
+    productId: string,
+    data: Omit<ProductTier, "id" | "productId" | "companyId">,
+  ) {
+    const { data: row, error } = await supabase
+      .from("product_price_tier")
+      .insert(ProductPriceTierMapper.toInsert(productId, data))
+      .select()
+      .single();
+
+    if (error) throw error;
+    return ProductPriceTierMapper.toDomain(row);
   }
 
   async updateProductPriceTier(
     id: string,
-    data: Partial<ProductTier>,
-  ): Promise<ProductTier | null> {
-    const { data: d, error } = await this.supabase
+    data: Partial<Omit<ProductTier, "id" | "productId" | "companyId">>,
+  ) {
+    const { data: row, error } = await supabase
       .from("product_price_tier")
-      .update(data as any)
+      .update(ProductPriceTierMapper.toUpdate(data))
       .eq("id", id)
       .select()
-      .maybeSingle();
+      .single();
 
-    if (error || !data) return null;
-    return ProductPriceTierMapper.toDomain(d);
+    if (error) throw error;
+    return ProductPriceTierMapper.toDomain(row);
+  }
+
+  async removeProductPriceTier(id: string) {
+    const { error } = await supabase
+      .from("product_price_tier")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
   }
 
   /**
