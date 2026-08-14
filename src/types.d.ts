@@ -855,14 +855,14 @@ interface Product {
   id: string;
   companyId: string;
   name: string;
-  status: string;
+  status: "in-stock" | "out-of-stock";
   totalStock: number;
   category?: string | null;
   benefits?: string | null;
   imageUrl?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
-  tiers?: ProductTier[];
+  tiers?: ProductTier[] | Omit<ProductTier, "id" | "productId">[];
 }
 
 interface ProductTier {
@@ -1080,4 +1080,15 @@ interface Company {
   bankAccountNumber?: number;
   bankAccountName?: string;
   logoUrl?: string;
+}
+
+type UpdateProductQueryType = {
+  companyId: string;
+  id: string;
+  data: Partial<Product>;
+}
+
+type CreateProductQueryType = {
+  companyId: string;
+  data: Product & { tiers: Omit<ProductTier, "id" | "productId"> };
 }

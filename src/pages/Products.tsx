@@ -22,32 +22,15 @@ import {
 } from "@/data/queries";
 import { useAuth } from "@/context/AuthContext";
 
-export interface PriceTier {
-    name: string;
-    costPrice: number;
-    sellingPrice: number;
-}
-
-export interface Product {
-    id: string;
-    name: string;
-    category: string;
-    imageUrl?: string;
-    benefits?: string;
-    status: "in-stock" | "out-of-stock";
-    totalStock: number;
-    tiers: PriceTier[];
-}
-
 interface ProductFormValues {
     name: string;
     category: string;
     imageUrl: string;
     benefits: string;
-    tiers: PriceTier[];
+    tiers: Omit<ProductTier, "id" | "productId">[];
 }
 
-const DEFAULT_TIERS: PriceTier[] = [
+const DEFAULT_TIERS: Omit<ProductTier, "id" | "productId">[] = [
     { name: "Retail", costPrice: 0, sellingPrice: 0 },
     { name: "Wholesale", costPrice: 0, sellingPrice: 0 },
     { name: "DM/Group", costPrice: 0, sellingPrice: 0 },
@@ -77,7 +60,9 @@ export default function Products() {
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
     // Custom Tier State for Modal
-    const [customTier, setCustomTier] = useState<PriceTier>({
+    const [customTier, setCustomTier] = useState<
+        Omit<ProductTier, "id" | "productId">
+    >({
         name: "",
         costPrice: 0,
         sellingPrice: 0,
@@ -93,7 +78,7 @@ export default function Products() {
         return products.filter((p) => {
             const matchSearch =
                 p.name.toLowerCase().includes(search.toLowerCase()) ||
-                p.category.toLowerCase().includes(search.toLowerCase());
+                (p.category && p.category.toLowerCase().includes(search.toLowerCase()));
             const matchFilter =
                 filter === "all" || p.status === filter || p.category === filter;
             return matchSearch && matchFilter;
@@ -101,7 +86,9 @@ export default function Products() {
     }, [products, search, filter]);
 
     /* filters tiers where the selling and cost price are both equal to 0 */
-    const filterUnusedTiers = (tiers: PriceTier[]): PriceTier[] => {
+    const filterUnusedTiers = (
+        tiers: Omit<ProductTier, "id" | "productId">[],
+    ): Omit<ProductTier, "id" | "productId">[] => {
         return tiers.filter((t) => t.sellingPrice != 0 && t.costPrice != 0);
     };
 
@@ -134,6 +121,7 @@ export default function Products() {
                 toast.error("Each product must have at least one price tier");
                 return;
             }
+
             if (editing) {
                 await updateProductMutation.mutateAsync({
                     companyId,
@@ -161,7 +149,7 @@ export default function Products() {
     // Tier Helpers
     const handleUpdateTier = (
         index: number,
-        field: keyof PriceTier,
+        field: keyof ProductTier,
         value: string | number,
     ) => {
         const updated = [...formik.values.tiers];

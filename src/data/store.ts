@@ -936,24 +936,29 @@ export class CompanyDataStore {
 
     let product = ProductMapper.toDomain(DBproduct);
 
-    data.tiers.map(async (tier) => {
-      const { data: t, error } = await this.supabase
-        .from("product_price_tier")
-        .insert(
-          ProductPriceTierMapper.toInsert({ ...tier, productId: DBproduct.id }),
-        )
-        .select()
-        .single();
+    const tiers = await Promise.all(
+      data.tiers.map(async (tier) => {
+        const { data: t, error } = await this.supabase
+          .from("product_price_tier")
+          .insert(
+            ProductPriceTierMapper.toInsert({
+              ...tier,
+              productId: DBproduct.id,
+            }),
+          )
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (product.tiers) {
-        product.tiers.push(t);
-      } else {
-        product.tiers = [t];
-      }
-    });
-    return product;
+        return ProductPriceTierMapper.toDomain(t);
+      }),
+    );
+
+    return {
+      ...ProductMapper.toDomain(DBproduct),
+      tiers,
+    };
   }
 
   async getProduct(companyId: string, id: string): Promise<Product | null> {
@@ -976,7 +981,13 @@ export class CompanyDataStore {
       return { ...productData, tiers: [] };
     }
 
-    return { ...productData, tiers: d };
+    let t: ProductTier[] = [];
+
+    for (let i of d) {
+      t.push(ProductPriceTierMapper.toDomain(i));
+    }
+
+    return { ...productData, tiers: t };
   }
 
   async getAllProducts(companyId: string): Promise<Product[]> {
