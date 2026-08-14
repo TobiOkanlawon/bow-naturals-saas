@@ -243,10 +243,10 @@ export const ProductPriceTierMapper = {
       sellingPrice: row.selling_price,
     };
   },
-  toInsert(data: Omit<ProductTier, "id">): TablesInsert<"product_price_tier"> {
+  toInsert(productId: string, data: Omit<ProductTier, "id" | "productId">): TablesInsert<"product_price_tier"> {
     return {
       name: data.name,
-      product_id: data.productId,
+      product_id: productId,
       cost_price: data.costPrice,
       selling_price: data.sellingPrice,
     };
@@ -1007,13 +1007,44 @@ export class CompanyDataStore {
     id: string,
     data: Partial<Product>,
   ): Promise<Product | null> {
-    return this.update(
-      "product",
-      companyId,
-      id,
-      ProductMapper.toUpdate(data),
-      ProductMapper.toDomain,
+    // update the product itself
+    const { data: updated, error } = await this.supabase
+      .from("product")
+      .update(ProductMapper.toUpdate(data))
+      .eq("company_id", companyId)
+      .eq("id", id)
+      .select()
+      .single();
+
+    const updatedData = ProductMapper.toDomain(updated);
+
+    if (error) throw error;
+
+    // the previous price tiers are deleted regardless of operation
+    try {
+      await this.deleteAllProductPriceTiers(updatedData.id);
+    } catch (e) {
+      throw e;
+    }
+
+    if (!data.tiers) {
+      return updatedData;
+    }
+
+    // if there are tiers to update
+    // update the tiers. Delete former tiers then insert the new ones
+    const t = await Promise.all(
+      data.tiers.map(async (t) => {
+        console.log("t", t);
+        console.log(updatedData.id)
+        return this.createProductPriceTier(updatedData.id, t);
+      }),
     );
+
+    return {
+      ...ProductMapper.toDomain(updated),
+      tiers: t,
+    };
   }
 
   async deleteProduct(companyId: string, id: string): Promise<boolean> {
@@ -1108,6 +1139,17 @@ export class CompanyDataStore {
       .delete()
       .eq("id", id);
     if (error) throw error;
+  }
+
+  async deleteAllProductPriceTiers(productId: string) {
+    const { error: e } = await this.supabase
+      .from("product_price_tier")
+      .delete()
+      .eq("product_id", productId);
+
+    if (e) throw e;
+
+    return [];
   }
 
   /**
