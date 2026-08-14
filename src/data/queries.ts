@@ -314,12 +314,8 @@ export const useCreateProduct = () => {
     mutationFn: ({
       companyId,
       data,
-    }: {
-      companyId: string;
-      data: Omit<Product, "id" | "companyId"> & {
-        tiers: Omit<ProductTier, "id" | "productId">;
-      };
-    }) => dataStore.createProduct(companyId, data),
+    }: CreateProductQueryType
+    ) => dataStore.createProduct(companyId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["products"],
@@ -328,11 +324,21 @@ export const useCreateProduct = () => {
   });
 };
 
-export const useUpdateProduct = updateMutationHook("products", (c, id, d) =>
-  dataStore.updateProduct(c, id, d),
-);
+export const useUpdateProduct = () => {
+  const queryClient = useQueryClient();
 
-// export const useUpdateInventory = updateMutationHook('logistics', (logisticsCompanyId, data) => dataStore.updateLogisticsInventory(logisticsCompanyId, data))
+  return useMutation({
+    mutationKey: ["update-product"],
+    mutationFn: ({ companyId, id, data }: UpdateProductQueryType) => {
+      return dataStore.updateProduct(companyId, id, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["products"],
+      })
+    }
+  })
+};
 
 export const useUpdateInventory = () => {
   const qc = useQueryClient();
