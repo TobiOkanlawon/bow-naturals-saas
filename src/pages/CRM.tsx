@@ -48,6 +48,7 @@ import {
 import { toast } from "react-toastify";
 import * as Yup from "yup";
 import { useFormik } from "formik";
+import NoProductWarning from "@/components/crm/NoProductWarning";
 
 const schema = Yup.object({
   customerName: Yup.string().required("You must enter your customer's name"),
@@ -1540,12 +1541,14 @@ export default function CRM() {
                     <button
                       onClick={addItem}
                       className="btn-secondary text-xs py-1 px-2"
+                      disabled={!showTiers}
                     >
                       <Plus size={12} className="inline" /> Add
                     </button>
                   </div>
                 </div>
-                {orderItems.length === 0 ? (
+                {!showTiers && <NoProductWarning />}
+                {showTiers && orderItems.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-4">
                     No items
                   </p>
@@ -1623,7 +1626,7 @@ export default function CRM() {
                         )}
                       </div>
                     ))}
-                    {isCEO && (
+                    {showTiers && isCEO && (
                       <div className="bg-gray-100 rounded-lg p-3">
                         <div className="flex justify-between text-xs font-semibold text-green-600">
                           <span>Profit:</span>
