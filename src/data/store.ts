@@ -923,7 +923,7 @@ export class CompanyDataStore {
   async createProduct(
     companyId: string,
     data: Omit<Product, "id" | "companyId"> & {
-      tiers: Omit<ProductTier, "id" | "productId">;
+      tiers: Omit<ProductTier, "id" | "productId">[];
     },
   ): Promise<Product> {
     const { data: DBproduct, error } = await this.supabase
@@ -933,8 +933,6 @@ export class CompanyDataStore {
       .single();
 
     if (error) throw error;
-
-    let product = ProductMapper.toDomain(DBproduct);
 
     const tiers = await Promise.all(
       data.tiers.map(async (tier) => {
@@ -1108,7 +1106,7 @@ export class CompanyDataStore {
     productId: string,
     data: Omit<ProductTier, "id" | "productId" | "companyId">,
   ) {
-    const { data: row, error } = await supabase
+    const { data: row, error } = await this.supabase
       .from("product_price_tier")
       .insert(ProductPriceTierMapper.toInsert(productId, data))
       .select()
@@ -1540,8 +1538,6 @@ export class CompanyDataStore {
       .select(ORDER_SELECT)
       .eq("company_id", companyId)
       .order("created_at", { ascending: false });
-
-    console.log("le data", data);
 
     if (error || !data) return [];
     return data.map(OrderMapper.toDomain);
