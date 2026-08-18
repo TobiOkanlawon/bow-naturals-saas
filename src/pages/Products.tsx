@@ -105,6 +105,12 @@ export default function Products() {
         onSubmit: async (values) => {
             if (!companyId) return;
 
+            if (customTier.name && customTier.sellingPrice && customTier.costPrice) {
+                /* if there still exists some values in the custom fields, then: */
+                /* help the user to call the add custom tier function in case they didn't save that themselves */
+                handleAddCustomTier();
+            }
+
             const stock = editing?.totalStock ?? 0;
             const status: Product["status"] =
                 stock === 0 ? "out-of-stock" : "in-stock";
@@ -175,7 +181,7 @@ export default function Products() {
         const tierName = customTier.name.trim();
         if (!tierName) return;
 
-        const newTier: PriceTier = {
+        const newTier: ProductTier = {
             name: tierName,
             costPrice: Number(customTier.costPrice) || 0,
             sellingPrice: Number(customTier.sellingPrice) || 0,
