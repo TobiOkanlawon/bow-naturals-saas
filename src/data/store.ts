@@ -339,13 +339,12 @@ export const OrderMapper = {
       createdAt: row.created_at,
 
       isReturnCustomer: row.is_return_customer,
-      previousOrderId: row.previous_order_id,
 
       followUpStatus: row.follow_up_status,
       followUpNotes: row.follow_up_notes,
       followUpContactedAt: row.follow_up_contacted_at,
 
-      items: row.order_items?.map(ProductMapper.toDomain) ?? [],
+      items: row.order_item?.map(OrderItemMapper.toDomain) ?? [],
     };
   },
   toInsert(
