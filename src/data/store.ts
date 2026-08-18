@@ -1030,7 +1030,7 @@ export class CompanyDataStore {
     const t = await Promise.all(
       data.tiers.map(async (t) => {
         console.log("t", t);
-        console.log(updatedData.id)
+        console.log(updatedData.id);
         return this.createProductPriceTier(updatedData.id, t);
       }),
     );
