@@ -141,7 +141,6 @@ export const CompanyDataMapper = {
   },
 
   toUpdate(data: Partial<Company>): TablesUpdate<"company"> {
-    console.log("data: ", data);
     return {
       name: data.name,
       phone_number: data.phoneNumber,
@@ -243,7 +242,10 @@ export const ProductPriceTierMapper = {
       sellingPrice: row.selling_price,
     };
   },
-  toInsert(productId: string, data: Omit<ProductTier, "id" | "productId">): TablesInsert<"product_price_tier"> {
+  toInsert(
+    productId: string,
+    data: Omit<ProductTier, "id" | "productId">,
+  ): TablesInsert<"product_price_tier"> {
     return {
       name: data.name,
       product_id: productId,
@@ -536,7 +538,7 @@ export const ExpenseMapper = {
  * Uses repositories to isolate data by companyId
  */
 export class CompanyDataStore {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(private readonly supabase: SupabaseClient) { }
 
   private async create<TDomain, TInsert>(
     table: keyof Database["public"]["Tables"],
@@ -935,21 +937,16 @@ export class CompanyDataStore {
     if (error) throw error;
 
     const tiers = await Promise.all(
-      data.tiers.map(async (tier) => {
-        const { data: t, error } = await this.supabase
+      data.tiers.map(async (t) => {
+        const { data: d, error } = await this.supabase
           .from("product_price_tier")
-          .insert(
-            ProductPriceTierMapper.toInsert({
-              ...tier,
-              productId: DBproduct.id,
-            }),
-          )
+          .insert(ProductPriceTierMapper.toInsert(DBproduct.id, t))
           .select()
           .single();
 
         if (error) throw error;
 
-        return ProductPriceTierMapper.toDomain(t);
+        return ProductPriceTierMapper.toDomain(d);
       }),
     );
 
@@ -1431,8 +1428,6 @@ export class CompanyDataStore {
     id: string,
     data: Partial<LogisticsCompany>,
   ): Promise<LogisticsCompany | null> {
-    console.log("this is what's coming in", data);
-
     const { data: result, error } = await this.supabase
       .from("logistics_company")
       .update(LogisticsMapper.toUpdate(data))

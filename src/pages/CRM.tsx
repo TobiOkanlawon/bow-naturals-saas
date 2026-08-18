@@ -140,7 +140,7 @@ export default function CRM() {
   const [selectedOrderForDelivery, setSelectedOrderForDelivery] =
     useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<Order["items"]>([]);
-  const [selectedTier, setSelectedTier] = useState<string>("Retail");
+  const [selectedTier, setSelectedTier] = useState<string>("");
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [broadcastFilter, setBroadcastFilter] = useState<string>("all");
   const [broadcastAgentFilter, setBroadcastAgentFilter] =
@@ -1531,6 +1531,7 @@ export default function CRM() {
                       value={selectedTier}
                       onChange={(e) => setSelectedTier(e.target.value)}
                     >
+                      <option value="">Select a tier</option>
                       {showTiers &&
                         allTiers.map((t) => (
                           <option key={t.id} value={t.name}>
@@ -1541,6 +1542,7 @@ export default function CRM() {
                     <button
                       onClick={addItem}
                       className="btn-secondary text-xs py-1 px-2"
+                      /* disabled if there are no tiers to show, to avoid issues */
                       disabled={!showTiers}
                     >
                       <Plus size={12} className="inline" /> Add
