@@ -1938,10 +1938,13 @@ export function normalizePhone(raw: string): string {
   if (digits.startsWith("0") && digits.length > 9) digits = digits.slice(1);
   return digits;
 }
+
 export function phonesMatch(a: string, b: string): boolean {
   return !!a && !!b && normalizePhone(a) === normalizePhone(b);
 }
+
 export function orderMatchesPhone(order: Order, phone: string): boolean {
+  if (!phone) return false;
   const n = normalizePhone(phone);
   if (!n) return false;
   return (
