@@ -385,17 +385,31 @@ export default function CRM() {
 
   const addItem = () => {
     if (!products!.length) return;
-    const p = products![0];
-    const t = p?.tiers.find((x) => x.name === selectedTier) || p?.tiers[0];
+
+    /* First, we can get all the products that fit the particular chosen tier */
+
+    const filteredProducts = products.filter((p) => {
+      return p.tiers.some((t) => t.name === selectedTier);
+    });
+
+    const getProductSelectedTier = (
+      product: Product,
+      selectedTier: string,
+    ): ProductTier => {
+      return product.tiers.find((t) => t.name === selectedTier);
+    };
+
+    const s = getProductSelectedTier(filteredProducts[0], selectedTier);
+
     setOrderItems([
       ...orderItems,
       {
-        productId: p.id,
-        productName: p.name,
+        productId: filteredProducts[0].id,
+        productName: filteredProducts[0].name,
         quantity: 1,
-        unitPrice: t.sellingPrice,
-        costPrice: t.costPrice,
-        tierName: t.name,
+        unitPrice: s.sellingPrice,
+        costPrice: s.costPrice,
+        tierName: s.name,
       },
     ]);
   };
