@@ -744,13 +744,13 @@ export default function CRM() {
       return p.tiers.length > 0;
     });
 
-  const allTiers = Array.from(
-    new Set(
-      products.reduce((accumulator, currentValue) => {
-        accumulator.push(...currentValue.tiers);
-        return accumulator;
-      }, []),
-    ),
+  /* all unique tiers */
+  const allUniqueTiers = Array.from(
+    new Map(
+      products
+        .flatMap((product) => product.tiers)
+        .map((tier) => [tier.name, tier]),
+    ).values(),
   );
 
   // ---- Guard rendering until auth + companyId are actually resolved ----
@@ -1547,7 +1547,7 @@ export default function CRM() {
                     >
                       <option value="">Select a tier</option>
                       {showTiers &&
-                        allTiers.map((t) => (
+                        allUniqueTiers.map((t) => (
                           <option key={t.id} value={t.name}>
                             {t.name}
                           </option>
