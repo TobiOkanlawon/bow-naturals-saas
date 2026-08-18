@@ -1933,6 +1933,7 @@ export class CompanyDataStore {
 
 // Phone normalization
 export function normalizePhone(raw: string): string {
+  if (!raw) return raw;
   let digits = raw.replace(/[^0-9]/g, "");
   if (digits.startsWith("234") && digits.length > 10) digits = digits.slice(3);
   if (digits.startsWith("0") && digits.length > 9) digits = digits.slice(1);
@@ -1945,13 +1946,29 @@ export function phonesMatch(a: string, b: string): boolean {
 
 export function orderMatchesPhone(order: Order, phone: string): boolean {
   if (!phone) return false;
-  const n = normalizePhone(phone);
-  if (!n) return false;
-  return (
-    normalizePhone(order.phoneNumber) === n ||
-    normalizePhone(order.whatsappNumber) === n
-  );
+
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return false;
+
+  if (order.phoneNumber) {
+    const normalizedOrderPhone = normalizePhone(order.phoneNumber);
+
+    if (normalizedOrderPhone === normalizedPhone) {
+      return true;
+    }
+  }
+
+  if (order.whatsappNumber) {
+    const normalizedWhatsapp = normalizePhone(order.whatsappNumber);
+
+    if (normalizedWhatsapp === normalizedPhone) {
+      return true;
+    }
+  }
+
+  return false;
 }
+
 export function formatNaira(amount: number): string {
   return "₦" + amount.toLocaleString();
 }
