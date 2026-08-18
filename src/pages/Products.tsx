@@ -105,10 +105,17 @@ export default function Products() {
         onSubmit: async (values) => {
             if (!companyId) return;
 
+            let tiers = values.tiers;
+
             if (customTier.name && customTier.sellingPrice && customTier.costPrice) {
                 /* if there still exists some values in the custom fields, then: */
                 /* help the user to call the add custom tier function in case they didn't save that themselves */
-                handleAddCustomTier();
+
+                const newTier = await handleAddCustomTier();
+
+                if (newTier) {
+                    tiers = [...tiers, newTier];
+                }
             }
 
             const stock = editing?.totalStock ?? 0;
@@ -117,6 +124,7 @@ export default function Products() {
 
             let payload = {
                 ...values,
+                tiers,
                 imageUrl: values.imageUrl || undefined,
                 benefits: values.benefits || undefined,
             };
@@ -177,18 +185,21 @@ export default function Products() {
         setCustomTier({ name: "", costPrice: 0, sellingPrice: 0 });
     };
 
-    const handleAddCustomTier = () => {
+    const handleAddCustomTier = async () => {
         const tierName = customTier.name.trim();
-        if (!tierName) return;
+        if (!tierName) return null;
 
-        const newTier: ProductTier = {
+        const newTier: Omit<ProductTier, "id" | "productId"> = {
             name: tierName,
             costPrice: Number(customTier.costPrice) || 0,
             sellingPrice: Number(customTier.sellingPrice) || 0,
         };
 
-        formik.setFieldValue("tiers", [...formik.values.tiers, newTier]);
+        await formik.setFieldValue("tiers", [...formik.values.tiers, newTier]);
+
         resetCustomTier();
+
+        return newTier;
     };
 
     // UI Handlers
