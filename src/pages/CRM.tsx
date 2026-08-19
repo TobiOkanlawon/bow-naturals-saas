@@ -735,7 +735,45 @@ export default function CRM() {
 
   const sendInvoiceToWhatsApp = () => {
     if (!invoiceOrder) return;
-    // ...unchanged from your version — this part had no bugs, only omitted here for length.
+
+    const message = `${company.name} Invoice #${invoiceOrder.serialNumber}
+
+Customer: ${invoiceOrder.customerName}
+${invItems
+  .map(
+    (item) =>
+      `${item.name} x${item.qty} = ${formatNaira(item.price)}${
+        item.benefits ? ` (${item.benefits})` : ""
+      }`,
+  )
+  .join("\n")}
+
+  Subtotal: ${formatNaira(invSubtotal)}
+  Delivery: ${formatNaira(invDelivery)}
+  Paid: ${formatNaira(invPaid)}
+  Balance: ${formatNaira(invBalance)}
+  ${invNote ? `\n${invNote}` : ""}
+  ${
+    company.accountNumber
+      ? `\n💳 Payment Details
+  ${company.bankName} - ${company.accountNumber}
+  ${company.accountName}`
+      : ""
+  }
+  ${company.phoneNumber ? `\n📞 ${company.phoneNumber}` : ""}
+  ${company.thankYouMessage ? `\n\n${company.thankYouMessage}` : ""}`;
+
+    // WhatsApp requires the phone number in international format.
+    // Example: 08012345678 -> 2348012345678
+    let phone = invoiceOrder.phoneNumber.replace(/\D/g, "");
+
+    if (phone.startsWith("0")) {
+      phone = `234${phone.slice(1)}`;
+    }
+
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+
+    window.open(whatsappUrl, "_blank");
   };
 
   const showTiers =
