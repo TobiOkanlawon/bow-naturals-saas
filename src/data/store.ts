@@ -220,15 +220,16 @@ export const ProductMapper = {
     };
   },
   toUpdate(data: Partial<Product>): TablesUpdate<"product"> {
-    return {
-      name: data.name,
-      status: data.status,
-      total_stock: data.totalStock,
-      category: data.category,
-      benefits: data.benefits,
-      image_url: data.imageUrl,
+    const update: TablesUpdate<"product"> = {
       updated_at: new Date().toISOString(),
     };
+    if (data.name !== undefined) update.name = data.name;
+    if (data.status !== undefined) update.status = data.status;
+    if (data.totalStock !== undefined) update.total_stock = data.totalStock;
+    if (data.category !== undefined) update.category = data.category;
+    if (data.benefits !== undefined) update.benefits = data.benefits;
+    if (data.imageUrl !== undefined) update.image_url = data.imageUrl;
+    return update;
   },
 };
 
