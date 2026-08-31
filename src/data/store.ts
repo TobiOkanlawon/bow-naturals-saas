@@ -8,21 +8,24 @@ import { SupabaseClient } from "@supabase/supabase-js";
 // ==========================================
 
 export interface CreateStaffRequest {
-  companyId: string;
+  companyId?: string;
 
   fullName: string;
   email: string;
-  password: string;
+  password?: string;
 
   role: UserRole;
-  status: "active";
+  status?: string;
 
   department?: string;
   phone?: string;
   salary?: number;
   joinDate?: string; // ISO date string (YYYY-MM-DD)
 
-  permissions?: Permissions;
+  permissions?: StaffPermissions;
+  invitationStatus?: string;
+  invitedAt?: string;
+  acceptedAt?: string;
 }
 
 export const OrderItemMapper = {
@@ -151,8 +154,33 @@ export const CompanyDataMapper = {
   },
 };
 
+export const PermissionMapper = {
+  toDomain(row: Record<string, any> | null | undefined): StaffPermissions {
+    return {
+      canAddEditInventory: Boolean(row?.can_add_edit_inventory),
+      canAddLogistics: Boolean(row?.can_add_logistics),
+      canMarkDelivered: Boolean(row?.can_mark_delivered),
+    };
+  },
+  toInsert(userId: number, data: StaffPermissions) {
+    return {
+      user_id: userId,
+      can_add_edit_inventory: data.canAddEditInventory ?? false,
+      can_add_logistics: data.canAddLogistics ?? false,
+      can_mark_delivered: data.canMarkDelivered ?? false,
+    };
+  },
+  toUpdate(data: Partial<StaffPermissions>) {
+    return {
+      can_add_edit_inventory: data.canAddEditInventory,
+      can_add_logistics: data.canAddLogistics,
+      can_mark_delivered: data.canMarkDelivered,
+    };
+  },
+};
+
 export const StaffMapper = {
-  toDomain(row: Tables<"profile">): StaffMember {
+  toDomain(row: any): StaffMember {
     return {
       id: row.id,
       userId: row.user_id,
@@ -160,6 +188,9 @@ export const StaffMapper = {
       fullName: row.full_name,
       role: row.role,
       createdAt: row.created_at,
+      permissions: row.permission
+        ? PermissionMapper.toDomain(row.permission)
+        : undefined,
     };
   },
   toInsert(
@@ -255,12 +286,15 @@ export const ProductPriceTierMapper = {
     };
   },
   toUpdate(data: Partial<ProductTier>): TablesUpdate<"product_price_tier"> {
-    return {
-      name: data.name,
-      product_id: data.productId,
-      cost_price: data.costPrice,
-      selling_price: data.sellingPrice,
-    };
+
+    const update = {};
+    update.id = product_id;
+
+    if (data.name) update.name = data.name;
+    if (data.costPrice) update.cost_price = data.costPrice;
+    if (data.sellingPrice) update.selling_price = data.sellingPrice;
+
+    return update;
   },
 };
 
@@ -674,29 +708,93 @@ export class CompanyDataStore {
       throw new Error("failed to create staff");
     }
 
-    return d;
+    const createdStaff = d as StaffMember | null;
+    if (createdStaff?.id && data.permissions) {
+      await this.syncStaffPermissions(createdStaff.id, data.permissions);
+    }
+
+    return {
+      ...(createdStaff ?? {}),
+      permissions: data.permissions ? { ...data.permissions } : undefined,
+    } as StaffMember;
   }
 
   async getStaff(companyId: string, id: string): Promise<StaffMember | null> {
-    return this.read("profile", companyId, id, StaffMapper.toDomain);
+    const { data, error } = await this.supabase
+      .from("profile")
+      .select("*, permission(*)")
+      .eq("company_id", companyId)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const permissionRow = Array.isArray(data.permission)
+      ? data.permission[0]
+      : data.permission;
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      companyId: data.company_id,
+      fullName: data.full_name,
+      role: data.role,
+      createdAt: data.created_at,
+      permissions: permissionRow
+        ? PermissionMapper.toDomain(permissionRow)
+        : this.getDefaultPermissions(),
+    };
   }
 
   async getAllStaff(companyId: string): Promise<StaffMember[]> {
-    return this.readAll("profile", companyId, StaffMapper.toDomain);
+    const { data, error } = await this.supabase
+      .from("profile")
+      .select("*, permission(*)")
+      .eq("company_id", companyId);
+
+    if (error || !data) return [];
+
+    return data.map((row: any) => {
+      const permissionRow = Array.isArray(row.permission)
+        ? row.permission[0]
+        : row.permission;
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        companyId: row.company_id,
+        fullName: row.full_name,
+        role: row.role,
+        createdAt: row.created_at,
+        permissions: permissionRow
+          ? PermissionMapper.toDomain(permissionRow)
+          : this.getDefaultPermissions(),
+      };
+    });
   }
 
   async updateStaff(
     companyId: string,
-    id: number,
+    id: string,
     data: Partial<StaffMember>,
   ): Promise<StaffMember | null> {
-    return this.update(
-      "profile",
-      companyId,
-      id,
-      StaffMapper.toUpdate(data),
-      StaffMapper.toDomain,
-    );
+    const updatePayload = StaffMapper.toUpdate(data);
+
+    const { data: updatedProfile, error } = await this.supabase
+      .from("profile")
+      .update(updatePayload as any)
+      .eq("company_id", companyId)
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+
+    if (error || !updatedProfile) return null;
+
+    if (data.permissions !== undefined) {
+      await this.syncStaffPermissions(updatedProfile.id, data.permissions);
+    }
+
+    return this.getStaff(companyId, String(id));
   }
 
   async deleteStaff(companyId: string, id: number): Promise<boolean> {
@@ -835,8 +933,6 @@ export class CompanyDataStore {
       .maybeSingle();
 
     if (e || !planData) {
-      // plan may be optional — continue without throwing
-      // console.debug("planData: ", planData, e);
     }
 
     const { data: ceoData, error: f } = await this.supabase
@@ -1011,34 +1107,59 @@ export class CompanyDataStore {
       .select()
       .single();
 
-    const updatedData = ProductMapper.toDomain(updated);
-
     if (error) throw error;
 
-    // the previous price tiers are deleted regardless of operation
-    try {
-      await this.deleteAllProductPriceTiers(updatedData.id);
-    } catch (e) {
-      throw e;
-    }
+    const updatedData = ProductMapper.toDomain(updated);
 
     if (!data.tiers) {
       return updatedData;
     }
 
-    // if there are tiers to update
-    // update the tiers. Delete former tiers then insert the new ones
-    const t = await Promise.all(
-      data.tiers.map(async (t) => {
-        console.log("t", t);
-        console.log(updatedData.id);
-        return this.createProductPriceTier(updatedData.id, t);
-      }),
+    // fetch existing tiers so we can diff against what's incoming
+    const { data: existingRows, error: fetchError } = await this.supabase
+      .from("product_price_tier")
+      .select("*")
+      .eq("product_id", updatedData.id);
+
+    if (fetchError) throw fetchError;
+
+    const existingTiers = (existingRows ?? []).map((r) =>
+      ProductPriceTierMapper.toDomain(r),
+    );
+    const existingIds = new Set(existingTiers.map((t) => t.id));
+    const incomingIds = new Set(
+      data.tiers.filter((t) => t.id ? t.id : false).map((t) => t.id),
     );
 
+    const toCreate = data.tiers.filter((t) => !t.id);
+    const toUpdate = data.tiers.filter((t) => t.id && existingIds.has(t.id));
+    const toDelete = existingTiers.filter((t) => !incomingIds.has(t.id));
+
+    const [created, updatedTiers] = await Promise.all([
+      Promise.all(
+        toCreate.map((t) => this.createProductPriceTier(updatedData.id, t)),
+      ),
+      Promise.all(
+        toUpdate.map((t) =>
+          this.updateProductPriceTier(t.id!, t),
+        ),
+      ),
+    ]);
+
+    if (toDelete.length > 0) {
+      const { error: deleteError } = await this.supabase
+        .from("product_price_tier")
+        .delete()
+        .in(
+          "id",
+          toDelete.map((t) => t.id),
+        );
+      if (deleteError) throw deleteError;
+    }
+
     return {
-      ...ProductMapper.toDomain(updated),
-      tiers: t,
+      ...updatedData,
+      tiers: [...updatedTiers, ...created],
     };
   }
 
@@ -2097,38 +2218,38 @@ export const ORDER_STATUS_OPTIONS: {
   label: string;
   color: string;
 }[] = [
-  { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
-  { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
-  { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
-  {
-    value: "delivered",
-    label: "Delivered",
-    color: "bg-green-50 text-green-700",
-  },
-  {
-    value: "uncommitted",
-    label: "Uncommitted",
-    color: "bg-gray-100 text-gray-600",
-  },
-  { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
-  { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
-  {
-    value: "not-reachable",
-    label: "Not Reachable",
-    color: "bg-orange-50 text-orange-700",
-  },
-  {
-    value: "not-picking",
-    label: "Not Picking",
-    color: "bg-orange-100 text-orange-800",
-  },
-  { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
-  {
-    value: "changed-date",
-    label: "Changed Date",
-    color: "bg-indigo-50 text-indigo-700",
-  },
-];
+    { value: "pending", label: "Pending", color: "bg-amber-50 text-amber-700" },
+    { value: "confirmed", label: "Confirmed", color: "bg-blue-50 text-blue-700" },
+    { value: "shipped", label: "Shipped", color: "bg-purple-50 text-purple-700" },
+    {
+      value: "delivered",
+      label: "Delivered",
+      color: "bg-green-50 text-green-700",
+    },
+    {
+      value: "uncommitted",
+      label: "Uncommitted",
+      color: "bg-gray-100 text-gray-600",
+    },
+    { value: "rejected", label: "Rejected", color: "bg-red-50 text-red-700" },
+    { value: "failed", label: "Failed", color: "bg-red-100 text-red-800" },
+    {
+      value: "not-reachable",
+      label: "Not Reachable",
+      color: "bg-orange-50 text-orange-700",
+    },
+    {
+      value: "not-picking",
+      label: "Not Picking",
+      color: "bg-orange-100 text-orange-800",
+    },
+    { value: "next-week", label: "Next Week", color: "bg-sky-50 text-sky-700" },
+    {
+      value: "changed-date",
+      label: "Changed Date",
+      color: "bg-indigo-50 text-indigo-700",
+    },
+  ];
 
 export function getOrderStatusColor(status: OrderStatus): string {
   return (

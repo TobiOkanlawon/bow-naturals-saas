@@ -142,7 +142,7 @@ export default function Staff() {
   const openAdd = () => {
     setEditing(null);
     setForm({
-      status: "active",
+      status: "invited",
       joinDate: new Date().toISOString().split("T")[0],
       permissions: {
         canAddEditInventory: false,
@@ -181,11 +181,10 @@ export default function Staff() {
         data: {
           fullName: form.name || "",
           email: form.email || "",
-          password: form.password || "staff123",
           role: form.role || "",
           department: form.department || "",
-          status: form.status || "active",
-          joinDate: form.joinDate || "",
+          status: "invited",
+          joinDate: form.joinDate || new Date().toISOString().split("T")[0],
           phone: form.phone || "",
           salary: form.salary || 0,
           permissions: form.permissions || {
@@ -193,6 +192,8 @@ export default function Staff() {
             canAddLogistics: false,
             canMarkDelivered: false,
           },
+          invitationStatus: "pending",
+          invitedAt: new Date().toISOString(),
         },
       });
     }
@@ -466,12 +467,16 @@ export default function Staff() {
                 <div className="flex items-center gap-1 shrink-0">
                   <span
                     className={`badge text-[10px] ${
-                      member.status === "active"
-                        ? "bg-green-50 text-green-700"
-                        : "bg-gray-100 text-gray-600"
+                      member.invitationStatus === "pending"
+                        ? "bg-amber-50 text-amber-700"
+                        : member.status === "active"
+                          ? "bg-green-50 text-green-700"
+                          : "bg-gray-100 text-gray-600"
                     }`}
                   >
-                    {member.status}
+                    {member.invitationStatus === "pending"
+                      ? "Invited • Pending"
+                      : member.status || "Inactive"}
                   </span>
                   <button
                     onClick={(e) => {
@@ -552,12 +557,17 @@ export default function Staff() {
                       <p className="text-[9px] text-gray-500">Conversion</p>
                     </div>
                   </div>
-                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
                     <span>
                       <Mail size={10} className="inline" /> {member.email}
                     </span>
                     <span>Salary: {formatNaira(member.salary)}</span>
                     <span>Joined: {member.joinDate}</span>
+                    {member.invitationStatus === "pending" && (
+                      <span className="text-amber-600 font-medium">
+                        Invitation pending acceptance
+                      </span>
+                    )}
                   </div>
                   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                     <button
@@ -662,19 +672,11 @@ export default function Staff() {
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
-                <input
-                  className="input-field"
-                  type="text"
-                  value={form.password || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, password: e.target.value })
-                  }
-                />
-              </div>
+              {!editing && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-sm text-amber-700">
+                  A secure invite will be sent to this email address. The user will be able to set their own password after accepting the invitation.
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -732,14 +734,15 @@ export default function Staff() {
                 </label>
                 <select
                   className="input-field"
-                  value={form.status}
+                  value={form.status || "invited"}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      status: e.target.value as "active" | "inactive",
+                      status: e.target.value as string,
                     })
                   }
                 >
+                  <option value="invited">Invited</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
@@ -818,7 +821,7 @@ export default function Staff() {
                 className="btn-primary flex-1 disabled:opacity-50"
                 style={{ backgroundColor: brand.primaryColor }}
               >
-                {editing ? "Update" : "Add"}
+                {editing ? "Update" : "Send Invite"}
               </button>
             </div>
           </div>

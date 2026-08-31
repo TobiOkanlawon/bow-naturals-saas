@@ -396,6 +396,7 @@ export default function CRM() {
       product: Product,
       selectedTier: string,
     ): ProductTier => {
+      if (!product) return [];
       return product.tiers.find((t) => t.name === selectedTier);
     };
 

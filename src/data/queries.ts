@@ -168,7 +168,7 @@ function updateMutationHook<TData>(
   key: string,
   fn: (companyId: string, id: string, data: TData) => Promise<unknown>,
 ) {
-  return function () {
+  return function() {
     const qc = useQueryClient();
 
     return useMutation({
@@ -194,7 +194,7 @@ function deleteMutationHook(
   key: string,
   fn: (companyId: string, id: string) => Promise<unknown>,
 ) {
-  return function () {
+  return function() {
     const qc = useQueryClient();
 
     return useMutation({
@@ -221,6 +221,14 @@ export function useSubscriptionPlans() {
   return useQuery({
     queryKey: ["subscription-plans"],
     queryFn: () => dataStore.getSubscriptionPlans(),
+  });
+}
+
+export function usePermission(userId: number | undefined) {
+  return useQuery<StaffPermissions | null>({
+    queryKey: ["permission", userId],
+    queryFn: () => dataStore.getPermission(userId as number),
+    enabled: typeof userId === "number",
   });
 }
 
@@ -330,6 +338,7 @@ export const useUpdateProduct = () => {
   return useMutation({
     mutationKey: ["update-product"],
     mutationFn: ({ companyId, id, data }: UpdateProductQueryType) => {
+      console.log("data from useQuery: ", data);
       return dataStore.updateProduct(companyId, id, data)
     },
     onSuccess: () => {
