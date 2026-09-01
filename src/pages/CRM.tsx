@@ -1144,9 +1144,13 @@ ${invItems
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    openWhatsApp(order.whatsappNumber);
+                    openWhatsApp(
+                      !!order.whatsappNumber
+                        ? order.whatsappNumber
+                        : order.phoneNumber,
+                    );
                   }}
-                  disabled={!order.whatsappNumber}
+                  disabled={!order.whatsappNumber && !order.phoneNumber}
                   className="p-1.5 text-green-500 hover:bg-green-50 rounded-lg"
                   title={
                     order.whatsappNumber ? "WhatsApp" : "No WhatsApp number"
@@ -1218,7 +1222,9 @@ ${invItems
                   <div>
                     <p className="text-gray-400">WhatsApp</p>
                     <button
-                      onClick={() => openWhatsApp(order.whatsappNumber)}
+                      onClick={() =>
+                        openWhatsApp(order.whatsappNumber || order.phoneNumber)
+                      }
                       className="text-green-600 flex items-center gap-1 hover:underline"
                     >
                       <MessageCircle size={10} /> {order.whatsappNumber}
