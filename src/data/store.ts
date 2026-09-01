@@ -321,11 +321,11 @@ export const LogisticsMapper = {
     };
   },
   toUpdate(data: Partial<LogisticsCompany>): TablesUpdate<"logistics_company"> {
-    return {
-      name: data.name,
-      phone: data.phone,
-      location: data.location,
-    };
+    const update: TablesUpdate<"logistics_company"> = {};
+    if (data.name !== undefined) update.name = data.name;
+    if (data.phone !== undefined) update.phone = data.phone;
+    if (data.location !== undefined) update.location = data.location;
+    return update;
   },
 };
 
@@ -1549,44 +1549,63 @@ export class CompanyDataStore {
     id: string,
     data: Partial<LogisticsCompany>,
   ): Promise<LogisticsCompany | null> {
-    const { data: result, error } = await this.supabase
-      .from("logistics_company")
-      .update(LogisticsMapper.toUpdate(data))
-      .eq("company_id", companyId)
-      .eq("id", id)
-      .select()
-      .maybeSingle();
+    const updatePayload = LogisticsMapper.toUpdate(data);
+    let result;
 
-    if (error) {
-      throw error;
+    if (Object.keys(updatePayload).length > 0) {
+      const { data: r, error } = await this.supabase
+        .from("logistics_company")
+        .update(updatePayload)
+        .eq("company_id", companyId)
+        .eq("id", id)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      result = r;
+    } else {
+      const { data: r, error } = await this.supabase
+        .from("logistics_company")
+        .select()
+        .eq("company_id", companyId)
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      result = r;
     }
 
     if (!data.inventory) {
       return result ? LogisticsMapper.toDomain(result) : null;
     }
-
-    const inventory = [];
-
-    for (let i of data.inventory) {
-      // we are forcing a create right now, but I don't necessary know if
-      // the user will be creating or updating here
-      const { data: d, error: e } = await this.supabase
-        .from("logistics_inventory")
-        .insert(LogisticsInventoryMapper.toInsert(result.id, i))
-        .eq("company_id", companyId)
-        .select();
-
-      if (e) {
-        throw error;
-      }
-
-      inventory.push(LogisticsInventoryMapper.toDomain(d));
+    if (!result) {
+      throw new Error(`logistics_company ${id} not found or blocked by RLS`);
     }
 
-    return {
-      ...LogisticsMapper.toDomain(result),
-      inventory,
-    };
+    const inventory = [];
+    for (const i of data.inventory) {
+      const { data: d, error: e } = await this.supabase
+        .from("logistics_inventory")
+        .update(LogisticsInventoryMapper.toUpdate(result.id, i))
+        // .eq("company_id", companyId)
+        .eq("logistics_company_id", result.id)
+        .eq("product_id", i.productId)
+        .select()
+        .maybeSingle();
+      if (e) throw e;
+
+      if (!d) {
+        const { data: created, error: insertErr } = await this.supabase
+          .from("logistics_inventory")
+          .insert(LogisticsInventoryMapper.toInsert(result.id, i))
+          .select()
+          .single();
+        if (insertErr) throw insertErr;
+        inventory.push(LogisticsInventoryMapper.toDomain(created));
+      } else {
+        inventory.push(LogisticsInventoryMapper.toDomain(d));
+      }
+    }
+
+    return { ...LogisticsMapper.toDomain(result), inventory };
   }
 
   async deleteLogistics(companyId: string, id: string): Promise<boolean> {
