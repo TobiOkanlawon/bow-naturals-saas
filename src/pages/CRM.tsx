@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { toPng } from "html-to-image";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useBrand } from "../context/BrandContext";
 import { useCompany } from "../context/CompanyContext";
@@ -77,6 +78,8 @@ export default function CRM() {
   const companyId = user?.companyId as string;
 
   const isCEO = user?.role === "ceo";
+
+  const invoiceRef = useRef<HTMLDivElement>(null);
 
   // ---- Reads (all gated on companyId being resolved) ----
   // const { data: staff = [] } = useStaff(companyId as string);
@@ -677,7 +680,18 @@ export default function CRM() {
       toast.error("No WhatsApp number on file for this order");
       return;
     }
-    window.open(`https://wa.me/${n.replace(/[^0-9]/g, "")}`, "_blank");
+    let digits = n.replace(/[^0-9]/g, "");
+    // Normalize to E.164 without the plus (wa.me expects country code + number, no leading zero)
+    if (digits.startsWith("234")) {
+      // already has country code, leave as-is
+    } else if (digits.startsWith("0")) {
+      // local format e.g. 0803... -> drop leading 0, prepend 234
+      digits = "234" + digits.slice(1);
+    } else {
+      // bare local number with no leading 0, e.g. 803...
+      digits = "234" + digits;
+    }
+    window.open(`https://wa.me/${digits}`, "_blank");
   };
   const callCustomer = (n: string) => window.open(`tel:${n}`, "_self");
   const getTotalItems = (o: Order) =>
@@ -791,6 +805,27 @@ ${invItems
         .map((tier) => [tier.name, tier]),
     ).values(),
   );
+
+  const downloadInvoiceImage = async () => {
+    if (!invoiceRef.current) return;
+
+    try {
+      const dataUrl = await toPng(invoiceRef.current, {
+        quality: 1,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+
+      const link = document.createElement("a");
+
+      link.download = `invoice-${invoiceOrder.serialNumber}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error("Failed to generate invoice image:", error);
+      alert("Could not generate the invoice image.");
+    }
+  };
 
   // ---- Guard rendering until auth + companyId are actually resolved ----
   if (authLoading || !companyId) {
@@ -2160,6 +2195,7 @@ ${invItems
         <div
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           onClick={() => setShowInvoiceModal(false)}
+          ref={invoiceRef}
         >
           <div
             className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
@@ -2380,10 +2416,10 @@ ${invItems
                   <Copy size={12} /> Copy
                 </button>
                 <button
-                  onClick={sendInvoiceToWhatsApp}
+                  onClick={downloadInvoiceImage}
                   className="btn-secondary flex-1 text-xs flex items-center justify-center gap-1"
                 >
-                  <FileText size={12} /> Print
+                  <FileText size={12} /> Download Invoice
                 </button>
               </div>
             </div>
