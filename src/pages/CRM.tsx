@@ -2163,7 +2163,10 @@ ${invItems
                   navigator.clipboard.writeText(
                     getBroadcastNumbers().join(", "),
                   );
-                  alert(`${getBroadcastNumbers().length} numbers copied!`);
+                  toast.success("Numbers copied to clipboard");
+                  // navigator.clipboard.readText().then((c) => console.log(c));
+
+                  // alert(`${getBroadcastNumbers().length} numbers copied!`);
                 }}
                 className="btn-secondary flex-1 text-xs"
               >
