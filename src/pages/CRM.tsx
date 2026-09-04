@@ -181,36 +181,26 @@ export default function CRM() {
   const filtered = useMemo(
     () =>
       orders.filter((o) => {
-        const isFullNameMatch = o.customerName
-          .toLowerCase()
-          .includes(search.toLowerCase());
+        const term = search.toLowerCase();
 
-        const isPhoneNumberMatch =
-          o.phoneNumber && o.phoneNumber.includes(search);
-
-        const isCityMatch =
-          o.city && o.city.toLowerCase().includes(search.toLowerCase());
-
-        const isSerialNumberMatch = String(o.serialNumber).includes(search);
-
-        statusFilter === "all";
+        const isSearchMatch =
+          !search ||
+          o.customerName.toLowerCase().includes(term) ||
+          (o.phoneNumber && o.phoneNumber.includes(search)) ||
+          (o.city && o.city.toLowerCase().includes(term)) ||
+          String(o.serialNumber).includes(search);
 
         const isStatusMatch =
-          o.orderStatus === statusFilter || o.paymentStatus === statusFilter;
+          statusFilter === "all" ||
+          o.orderStatus === statusFilter ||
+          o.paymentStatus === statusFilter;
 
-        const isOrderMatch = o;
+        const isProductMatch =
+          !productFilter ||
+          productFilter === "all" ||
+          o.items.some((i) => i.productId === productFilter);
 
-        const isIdMatch = o.items.some((i) => i.productId === productFilter);
-
-        return (
-          isFullNameMatch ||
-          isPhoneNumberMatch ||
-          isCityMatch ||
-          isSerialNumberMatch ||
-          isStatusMatch ||
-          isOrderMatch ||
-          isIdMatch
-        );
+        return isSearchMatch && isStatusMatch && isProductMatch;
       }),
     [orders, search, statusFilter, productFilter],
   );
