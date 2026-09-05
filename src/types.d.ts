@@ -918,7 +918,7 @@ interface Task {
   description?: string | null;
   status?: string | null;
   priority?: string | null;
-  assignee?: number | null;
+  assignee?: number | null | StaffMember; /* This is the profile ID of the person that this is assigned to */
   dueDate?: string | null;
   createdAt?: string | null;
 }

@@ -7,6 +7,76 @@ import { SupabaseClient } from "@supabase/supabase-js";
 // DATA TRANSFORMERS
 // ==========================================
 
+type TaskRowWithAssignee = Tables<"task"> & {
+  assignee: (Tables<"profile"> & { permission: Tables<"permission">[] | Tables<"permission"> | null }) | null;
+};
+
+const getDefaultPermissions = (): StaffPermissions => {
+  return {
+    canAddEditInventory: false,
+    canAddLogistics: false,
+    canMarkDelivered: false,
+  };
+}
+
+export const TaskMapper = {
+  toDomain(row: TaskRowWithAssignee): Task {
+    const permissionRow = row.assignee
+      ? Array.isArray(row.assignee.permission)
+        ? row.assignee.permission[0]
+        : row.assignee.permission
+      : null;
+
+    return {
+      id: row.id,
+      companyId: row.company_id,
+      title: row.title,
+      description: row.description,
+      status: row.status,
+      priority: row.priority,
+      assignee: row.assignee
+        ? {
+          id: row.assignee.id,
+          userId: row.assignee.user_id,
+          companyId: row.assignee.company_id,
+          fullName: row.assignee.full_name,
+          role: row.assignee.role,
+          createdAt: row.assignee.created_at,
+          permissions: permissionRow
+            ? PermissionMapper.toDomain(permissionRow)
+            : getDefaultPermissions(), // needs to be extracted/shared, see note below
+        }
+        : null,
+      dueDate: row.due_date,
+      createdAt: row.created_at,
+    };
+  },
+  toInsert(
+    data: Omit<Task, "id" | "companyId">,
+    companyId: string,
+  ): TablesInsert<"task"> {
+    return {
+      company_id: companyId,
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      priority: data.priority,
+      assignee: data.assignee,
+      due_date: data.dueDate,
+    };
+  },
+  toUpdate(data: Partial<Task>): TablesUpdate<"task"> {
+    return {
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      priority: data.priority,
+      assignee: data.assignee,
+      due_date: data.dueDate,
+    };
+  },
+};
+
 export interface CreateStaffRequest {
   companyId?: string;
 
@@ -286,7 +356,6 @@ export const ProductPriceTierMapper = {
     };
   },
   toUpdate(data: Partial<ProductTier>): TablesUpdate<"product_price_tier"> {
-
     const update = {};
     update.id = product_id;
 
@@ -441,45 +510,21 @@ export const OrderMapper = {
   },
 };
 
-export const TaskMapper = {
-  toDomain(row: Tables<"task">): Task {
-    return {
-      id: row.id,
-      companyId: row.company_id,
-      title: row.title,
-      description: row.description,
-      status: row.status,
-      priority: row.priority,
-      assignee: row.assignee,
-      dueDate: row.due_date,
-      createdAt: row.created_at,
-    };
-  },
-  toInsert(
-    data: Omit<Task, "id" | "companyId">,
-    companyId: string,
-  ): TablesInsert<"task"> {
-    return {
-      company_id: companyId,
-      title: data.title,
-      description: data.description,
-      status: data.status,
-      priority: data.priority,
-      assignee: data.assignee,
-      due_date: data.dueDate,
-    };
-  },
-  toUpdate(data: Partial<Task>): TablesUpdate<"task"> {
-    return {
-      title: data.title,
-      description: data.description,
-      status: data.status,
-      priority: data.priority,
-      assignee: data.assignee,
-      due_date: data.dueDate,
-    };
-  },
-};
+// export const TaskMapper = {
+//   toDomain(row: Tables<"task">): Task {
+//     return {
+//       id: row.id,
+//       companyId: row.company_id,
+//       title: row.title,
+//       description: row.description,
+//       status: row.status,
+//       priority: row.priority,
+//       assignee: row.assignee,
+//       dueDate: row.due_date,
+//       createdAt: row.created_at,
+//     };
+//   },
+// };
 
 export const MessageMapper = {
   toDomain(row: Tables<"chat_message">): ChatMessage {
@@ -1128,7 +1173,7 @@ export class CompanyDataStore {
     );
     const existingIds = new Set(existingTiers.map((t) => t.id));
     const incomingIds = new Set(
-      data.tiers.filter((t) => t.id ? t.id : false).map((t) => t.id),
+      data.tiers.filter((t) => (t.id ? t.id : false)).map((t) => t.id),
     );
 
     const toCreate = data.tiers.filter((t) => !t.id);
@@ -1139,11 +1184,7 @@ export class CompanyDataStore {
       Promise.all(
         toCreate.map((t) => this.createProductPriceTier(updatedData.id, t)),
       ),
-      Promise.all(
-        toUpdate.map((t) =>
-          this.updateProductPriceTier(t.id!, t),
-        ),
-      ),
+      Promise.all(toUpdate.map((t) => this.updateProductPriceTier(t.id!, t))),
     ]);
 
     if (toDelete.length > 0) {
@@ -1754,23 +1795,72 @@ export class CompanyDataStore {
   // ------------------------------------------------------------------
   // TASKS
   // ------------------------------------------------------------------
+
+  /*
+
+  private async create<TDomain, TInsert>(
+    table: keyof Database["public"]["Tables"],
+    insertPayload: TInsert,
+    toDomain: (row: any) => TDomain,
+  ): Promise<TDomain> {
+    const { data: result, error } = await this.supabase
+      .from(table)
+      .insert(insertPayload as any)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return toDomain(result);
+  }
+   */
+
   async createTask(
     companyId: string,
     data: Omit<Task, "id" | "companyId">,
   ): Promise<Task> {
-    return this.create(
-      "task",
-      TaskMapper.toInsert(data, companyId),
-      TaskMapper.toDomain,
-    );
+
+    console.log("data", data)
+
+    const { data: result, error } = await this.supabase
+      .from("task")
+      .insert(TaskMapper.toInsert(data, companyId))
+      .select()
+      .single();
+
+    if (error) throw error;
+    return TaskMapper.toDomain(result);
   }
 
-  async getTask(companyId: string, id: string): Promise<Task | null> {
-    return this.read("task", companyId, id, TaskMapper.toDomain);
+  async getTask(id: string): Promise<Task | null> {
+    const { data, error } = await this.supabase
+      .from("task")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error || !data) return null;
+
+    console.log("data back from db: ", data)
+
+    const task = TaskMapper.toDomain(data);
+    if (task.assignee) {
+      task.assignee = await this.getStaff(task.companyId, String(task.assignee));
+    }
+    return task;
   }
 
   async getAllTasks(companyId: string): Promise<Task[]> {
-    return this.readAll("task", companyId, TaskMapper.toDomain);
+    const { data, error } = await this.supabase
+      .from("task")
+      .select("*, assignee:profile(*, permission(*))")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false });
+
+    console.log("data from db: ", data)
+
+    if (error) throw error;
+    if (!data) return [];
+
+    return data.map((row) => TaskMapper.toDomain(row as TaskRowWithAssignee));
   }
 
   async updateTask(

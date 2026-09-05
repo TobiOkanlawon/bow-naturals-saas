@@ -343,7 +343,7 @@ export const useUpdateProduct = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["products"],
+        queryKey: ["products", "logistics"],
       })
     }
   })
@@ -500,14 +500,26 @@ export const useTasks = (companyId: string) =>
 
 export const useTask = (companyId: string, id: string) =>
   useQuery({
-    queryKey: ["tasks", companyId, id],
+    // queryKey: ["tasks", companyId, id],
+    queryKey: [],
     queryFn: () => dataStore.getTask(companyId, id),
     enabled: !!companyId && !!id,
   });
 
-export const useCreateTask = createMutationHook("tasks", (c, d) =>
-  dataStore.createTask(c, d),
-);
+export const useCreateTask = () => {
+
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationKey: ["create-task"],
+    mutationFn: (d: any) => dataStore.createTask(d.companyId, d.data),
+
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["tasks"] });
+    }
+
+  });
+}
 
 export const useUpdateTask = updateMutationHook("tasks", (c, id, d) =>
   dataStore.updateTask(c, id, d),

@@ -1,27 +1,27 @@
-import { useState } from 'react';
-import { useBrand } from '../context/BrandContext';
-import { useCompany } from '../context/CompanyContext';
-import { type Task } from '../data/store';
+import { useState } from "react";
+import { useBrand } from "../context/BrandContext";
+import { useCompany } from "../context/CompanyContext";
+import { type Task } from "../data/store";
 import {
   useTasks,
   useCreateTask,
   useUpdateTask,
   useDeleteTask,
-} from '@/data/queries';
-import { Plus, X, GripVertical } from 'lucide-react';
+} from "@/data/queries";
+import { Plus, X, GripVertical } from "lucide-react";
 
-const columns: { key: Task['status']; label: string; color: string }[] = [
-  { key: 'todo', label: 'To Do', color: '#6B7280' },
-  { key: 'in-progress', label: 'In Progress', color: '#3B82F6' },
-  { key: 'review', label: 'Review', color: '#F59E0B' },
-  { key: 'done', label: 'Done', color: '#10B981' },
+const columns: { key: Task["status"]; label: string; color: string }[] = [
+  { key: "todo", label: "To Do", color: "#6B7280" },
+  { key: "in-progress", label: "In Progress", color: "#3B82F6" },
+  { key: "review", label: "Review", color: "#F59E0B" },
+  { key: "done", label: "Done", color: "#10B981" },
 ];
 
-const priorityColors: Record<Task['priority'], string> = {
-  low: 'bg-gray-100 text-gray-600',
-  medium: 'bg-blue-50 text-blue-700',
-  high: 'bg-orange-50 text-orange-700',
-  urgent: 'bg-red-50 text-red-700',
+const priorityColors: Record<Task["priority"], string> = {
+  low: "bg-gray-100 text-gray-600",
+  medium: "bg-blue-50 text-blue-700",
+  high: "bg-orange-50 text-orange-700",
+  urgent: "bg-red-50 text-red-700",
 };
 
 export default function Tasks() {
@@ -44,14 +44,14 @@ export default function Tasks() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<Partial<Task>>({});
 
-  const openAdd = (status: Task['status'] = 'todo') => {
+  const openAdd = (status: Task["status"] = "todo") => {
     setForm({
       status,
-      priority: 'medium',
+      priority: "medium",
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         .toISOString()
-        .split('T')[0],
-      createdAt: new Date().toISOString().split('T')[0],
+        .split("T")[0],
+      createdAt: new Date().toISOString().split("T")[0],
     });
     setShowModal(true);
   };
@@ -59,14 +59,14 @@ export default function Tasks() {
   const save = async () => {
     if (!form.title || !companyId) return;
 
-    const newTaskData: Omit<Task, 'id'> = {
-      title: form.title || '',
-      description: form.description || '',
-      assignee: form.assignee || '',
-      priority: (form.priority as Task['priority']) || 'medium',
-      status: (form.status as Task['status']) || 'todo',
-      dueDate: form.dueDate || '',
-      createdAt: form.createdAt || new Date().toISOString().split('T')[0],
+    const newTaskData: Omit<Task, "id"> = {
+      title: form.title || "",
+      description: form.description || "",
+      assignee: form.assignee || "",
+      priority: (form.priority as Task["priority"]) || "medium",
+      status: (form.status as Task["status"]) || "todo",
+      dueDate: form.dueDate || "",
+      createdAt: form.createdAt || new Date().toISOString().split("T")[0],
     };
 
     await createTaskMutation.mutateAsync({
@@ -77,7 +77,7 @@ export default function Tasks() {
     setShowModal(false);
   };
 
-  const moveTask = async (taskId: string, newStatus: Task['status']) => {
+  const moveTask = async (taskId: string, newStatus: Task["status"]) => {
     if (!companyId) return;
 
     await updateTaskMutation.mutateAsync({
@@ -118,8 +118,8 @@ export default function Tasks() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">
-          {tasks.length} total tasks,{' '}
-          {tasks.filter((t) => t.status === 'done').length} completed
+          {tasks.length} total tasks,{" "}
+          {tasks.filter((t) => t.status === "done").length} completed
         </p>
         <button
           onClick={() => openAdd()}
@@ -134,6 +134,9 @@ export default function Tasks() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {columns.map((col) => {
           const colTasks = tasks.filter((t) => t.status === col.key);
+
+          console.log("this is a task", tasks);
+
           return (
             <div key={col.key} className="bg-gray-100/80 rounded-xl p-3">
               <div className="flex items-center justify-between mb-3">
@@ -189,16 +192,16 @@ export default function Tasks() {
                         {task.dueDate}
                       </span>
                     </div>
-                    {task.assignee && (
+                    {task.assignee.id && (
                       <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-50">
                         <div
                           className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center"
                           style={{ backgroundColor: brand.primaryColor }}
                         >
-                          {task.assignee.charAt(0)}
+                          {task.assignee.fullName.charAt(0)}
                         </div>
                         <span className="text-[10px] text-gray-500">
-                          {task.assignee}
+                          {task.assignee.fullName}
                         </span>
                       </div>
                     )}
@@ -256,7 +259,7 @@ export default function Tasks() {
                 </label>
                 <input
                   className="input-field"
-                  value={form.title || ''}
+                  value={form.title || ""}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                 />
               </div>
@@ -267,7 +270,7 @@ export default function Tasks() {
                 <textarea
                   className="input-field"
                   rows={2}
-                  value={form.description || ''}
+                  value={form.description || ""}
                   onChange={(e) =>
                     setForm({ ...form, description: e.target.value })
                   }
@@ -280,7 +283,7 @@ export default function Tasks() {
                   </label>
                   <input
                     className="input-field"
-                    value={form.assignee || ''}
+                    value={form.assignee || ""}
                     onChange={(e) =>
                       setForm({ ...form, assignee: e.target.value })
                     }
@@ -293,7 +296,7 @@ export default function Tasks() {
                   <input
                     className="input-field"
                     type="date"
-                    value={form.dueDate || ''}
+                    value={form.dueDate || ""}
                     onChange={(e) =>
                       setForm({ ...form, dueDate: e.target.value })
                     }
@@ -311,7 +314,7 @@ export default function Tasks() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        priority: e.target.value as Task['priority'],
+                        priority: e.target.value as Task["priority"],
                       })
                     }
                   >
@@ -331,7 +334,7 @@ export default function Tasks() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        status: e.target.value as Task['status'],
+                        status: e.target.value as Task["status"],
                       })
                     }
                   >
