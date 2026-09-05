@@ -7,6 +7,7 @@ import {
   useCreateTask,
   useUpdateTask,
   useDeleteTask,
+  useStaff,
 } from "@/data/queries";
 import { Plus, X, GripVertical } from "lucide-react";
 
@@ -35,6 +36,12 @@ export default function Tasks() {
     isLoading: loadingTasks,
     error: tasksError,
   } = useTasks(companyId);
+
+  const {
+    data: staff = [],
+    isLoading: loadingStaff,
+    error: staffError,
+  } = useStaff(companyId);
 
   // React Query Mutation Hooks
   const createTaskMutation = useCreateTask();
@@ -96,7 +103,7 @@ export default function Tasks() {
     });
   };
 
-  if (loadingTasks) {
+  if (loadingTasks || loadingStaff) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-sm text-gray-500">Loading tasks...</p>
@@ -104,7 +111,7 @@ export default function Tasks() {
     );
   }
 
-  if (tasksError) {
+  if (tasksError || staffError) {
     return (
       <div className="card p-6 text-center">
         <p className="text-sm text-red-600">
@@ -281,13 +288,22 @@ export default function Tasks() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Assignee
                   </label>
-                  <input
+                  <select
                     className="input-field"
                     value={form.assignee || ""}
                     onChange={(e) =>
-                      setForm({ ...form, assignee: e.target.value })
+                      setForm({ ...form, assignee: e.target.value || null })
                     }
-                  />
+                  >
+                    <option value="">Unassigned</option>
+                    {staff.map((member) => {
+                      return (
+                        <option key={member.id} value={member.id}>
+                          {member.fullName}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
