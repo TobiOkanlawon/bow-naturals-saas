@@ -472,34 +472,43 @@ export default function CRM() {
     const { totalAmount, totalCost } = calculateTotals();
     const amountPaid = form.amountPaid || 0;
 
-    if (editing) {
-      await updateOrderMutation.mutateAsync({
-        companyId,
-        id: editing.id,
-        data: {
-          ...form,
-          items: orderItems,
-          totalAmount,
-          totalCost,
-          grossProfit:
-            editing.orderStatus === "delivered"
-              ? amountPaid - totalCost - (form.deliveryFee ?? 0)
-              : 0,
-        },
-      });
-    } else {
-      await createOrderMutation.mutateAsync({
-        companyId,
-        data: {
-          ...form,
-          items: orderItems,
-          totalAmount,
-          totalCost,
-          amountPaid,
-          grossProfit: 0,
-        } as Omit<Order, "id" | "companyId">,
-      });
+    const userId = user?.userId;
+
+    try {
+      if (editing) {
+        await updateOrderMutation.mutateAsync({
+          companyId,
+          id: editing.id,
+          data: {
+            ...form,
+            items: orderItems,
+            totalAmount,
+            totalCost,
+            grossProfit:
+              editing.orderStatus === "delivered"
+                ? amountPaid - totalCost - (form.deliveryFee ?? 0)
+                : 0,
+          },
+          userId,
+        });
+      } else {
+        await createOrderMutation.mutateAsync({
+          companyId,
+          data: {
+            ...form,
+            items: orderItems,
+            totalAmount,
+            totalCost,
+            amountPaid,
+            grossProfit: 0,
+          } as Omit<Order, "id" | "companyId">,
+          userId,
+        });
+      }
+    } catch (e) {
+      toast.error(e);
     }
+
     setShowModal(false);
   };
 

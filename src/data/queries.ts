@@ -338,7 +338,6 @@ export const useUpdateProduct = () => {
   return useMutation({
     mutationKey: ["update-product"],
     mutationFn: ({ companyId, id, data }: UpdateProductQueryType) => {
-      console.log("data from useQuery: ", data);
       return dataStore.updateProduct(companyId, id, data)
     },
     onSuccess: () => {
@@ -470,10 +469,12 @@ export const useCreateOrder = () => {
     mutationFn: ({
       companyId,
       data,
+      userId,
     }: {
       companyId: string;
       data: Omit<Order, "id" | "companyId">;
-    }) => dataStore.createOrder(companyId, data),
+      userId: string;
+    }) => dataStore.createOrder(companyId, data, userId),
 
     onSuccess: () => {
       queryClient.invalidateQueries({

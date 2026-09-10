@@ -232,9 +232,9 @@ export const PermissionMapper = {
       canMarkDelivered: Boolean(row?.can_mark_delivered),
     };
   },
-  toInsert(userId: number, data: StaffPermissions) {
+  toInsert(profileId: number, data: StaffPermissions) {
     return {
-      user_id: userId,
+      profile_id: profileId,
       can_add_edit_inventory: data.canAddEditInventory ?? false,
       can_add_logistics: data.canAddLogistics ?? false,
       can_mark_delivered: data.canMarkDelivered ?? false,
@@ -710,15 +710,15 @@ export class CompanyDataStore {
   }
 
   private async syncStaffPermissions(
-    userId: number,
+    profileId: number,
     permissions?: StaffPermissions,
   ): Promise<void> {
     if (permissions === undefined) return;
 
     const { error } = await (this.supabase as any)
       .from("permission")
-      .upsert(PermissionMapper.toInsert(userId, permissions), {
-        onConflict: "user_id",
+      .upsert(PermissionMapper.toInsert(profileId, permissions), {
+        onConflict: "profile_id",
       });
 
     if (error) throw error;
@@ -728,7 +728,7 @@ export class CompanyDataStore {
     const { data, error } = await (this.supabase as any)
       .from("permission")
       .select("*")
-      .eq("user_id", userId)
+      .eq("profile_id", userId)
       .maybeSingle();
 
     if (error || !data) return null;
@@ -755,7 +755,7 @@ export class CompanyDataStore {
 
     const createdStaff = d as StaffMember | null;
     if (createdStaff?.id && data.permissions) {
-      await this.syncStaffPermissions(createdStaff.id, data.permissions);
+      await this.syncStaffPermissions(d.profileId, data.permissions);
     }
 
     return {
@@ -1669,10 +1669,33 @@ export class CompanyDataStore {
   async createOrder(
     companyId: string,
     data: Omit<Order, "id" | "companyId">,
+    userId: string,
   ): Promise<Order> {
+
+    /* So, first, we are trying to put the profile ID of the person who created this as the value of the field 'created_by' */
+
+    const { data: profile, error: e } = await this.supabase
+      .from("profile")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("company_id", companyId)
+      .single()
+
+    if (e) {
+      // fail very loudly
+      throw new Error(`a profile with the user ID ${userId} does not exist under the company ${companyId}`)
+    }
+
+    const dataObject = {
+      ...data,
+      created_by: profile.id
+    }
+
+    console.log("dataObject: ", dataObject);
+
     const { data: d, error } = await this.supabase
       .from("orders")
-      .insert(OrderMapper.toInsert(data, companyId))
+      .insert(OrderMapper.toInsert(dataObject, companyId))
       .select(ORDER_SELECT)
       .single();
 
@@ -1819,8 +1842,6 @@ export class CompanyDataStore {
     data: Omit<Task, "id" | "companyId">,
   ): Promise<Task> {
 
-    console.log("data", data)
-
     const { data: result, error } = await this.supabase
       .from("task")
       .insert(TaskMapper.toInsert(data, companyId))
@@ -1839,8 +1860,6 @@ export class CompanyDataStore {
       .maybeSingle();
     if (error || !data) return null;
 
-    console.log("data back from db: ", data)
-
     const task = TaskMapper.toDomain(data);
     if (task.assignee) {
       task.assignee = await this.getStaff(task.companyId, String(task.assignee));
@@ -1854,8 +1873,6 @@ export class CompanyDataStore {
       .select("*, assignee:profile(*, permission(*))")
       .eq("company_id", companyId)
       .order("created_at", { ascending: false });
-
-    console.log("data from db: ", data)
 
     if (error) throw error;
     if (!data) return [];

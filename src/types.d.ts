@@ -163,29 +163,29 @@ type Database = {
           },
         ];
       };
-      ermission: {
+      permission: {
         Row: {
           can_add_edit_inventory: boolean;
           can_add_logistics: boolean;
           can_mark_delivered: boolean;
-          user_id: number;
+          profile_id: number;
         };
         Insert: {
           can_add_edit_inventory?: boolean;
           can_add_logistics?: boolean;
           can_mark_delivered?: boolean;
-          user_id: number;
+          profile_id: number;
         };
         Update: {
           can_add_edit_inventory?: boolean;
           can_add_logistics?: boolean;
           can_mark_delivered?: boolean;
-          user_id?: number;
+          profile_id?: number;
         };
         Relationships: [
           {
-            foreignKeyName: "ermission_user_id_fkey";
-            columns: ["user_id"];
+            foreignKeyName: "ermission_profile_id_fkey";
+            columns: ["profile_id"];
             isOneToOne: true;
             referencedRelation: "profile";
             referencedColumns: ["id"];
@@ -1091,4 +1091,12 @@ type UpdateProductQueryType = {
 type CreateProductQueryType = {
   companyId: string;
   data: Product & { tiers: Omit<ProductTier, "id" | "productId"> };
+}
+
+type CreateStaffReturnDataType = {
+  id: string;
+  profileId: string;
+  email: string;
+  companyId: string;
+  fullName: string;
 }
