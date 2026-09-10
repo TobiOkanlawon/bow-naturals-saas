@@ -160,14 +160,23 @@ export default function Staff() {
   };
 
   const save = async () => {
+    const missing = {
+      name: !form.name,
+      email: !form.email,
+      role: !form.role,
+      department: !form.department,
+      companyId: !companyId,
+    };
+
     if (
-      !form.name ||
-      !form.email ||
-      !form.role ||
-      !form.department ||
-      !companyId
-    )
+      missing.name ||
+      missing.email ||
+      missing.role ||
+      missing.department ||
+      missing.companyId
+    ) {
       return;
+    }
 
     if (editing) {
       await updateStaffMutation.mutateAsync({
@@ -674,7 +683,9 @@ export default function Staff() {
               </div>
               {!editing && (
                 <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-sm text-amber-700">
-                  A secure invite will be sent to this email address. The user will be able to set their own password after accepting the invitation.
+                  A secure invite will be sent to this email address. The user
+                  will be able to set their own password after accepting the
+                  invitation.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
@@ -682,11 +693,14 @@ export default function Staff() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Role
                   </label>
-                  <input
+                  <select
                     className="input-field"
                     value={form.role || ""}
                     onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  />
+                  >
+                    <option value="">Select a role</option>
+                    <option value="staff">Staff</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
